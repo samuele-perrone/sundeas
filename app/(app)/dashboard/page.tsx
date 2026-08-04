@@ -19,6 +19,14 @@ const TYPE_LABELS: Record<string, string> = {
   investment: 'Investments', mortgage: 'Mortgages', credit_card: 'Credit cards', other: 'Other',
 }
 
+// Future value: lump sum + regular contributions, compounded monthly
+// FV = PV·(1+r)^n + PMT·((1+r)^n − 1)/r
+function projectBalance(base: number, monthlyNet: number, monthlyRate: number, months: number): number {
+  if (Math.abs(monthlyRate) < 1e-10) return base + monthlyNet * months
+  const growth = Math.pow(1 + monthlyRate, months)
+  return base * growth + (monthlyNet * (growth - 1)) / monthlyRate
+}
+
 const PRIORITY_VARIANT: Record<string, 'destructive' | 'secondary' | 'outline'> = {
   high: 'destructive',
   medium: 'secondary',
@@ -143,18 +151,21 @@ export default async function DashboardPage() {
         point[`h_${acc.id}`] = accountByMonth[acc.id][month]
       }
     }
-    // Bridge the last historical point into the projection
-    if (month === lastHistMonth && allRecurring.length > 0) {
-      point.projected = byMonth[month]
-      for (const acc of includedAccounts) {
-        point[`p_${acc.id}`] = accountLastBalance[acc.id]
-      }
-    }
     chartData.push(point)
   }
 
-  // Anchor at today if no history but recurring payments exist
-  if (allHistMonths.length === 0 && allRecurring.length > 0) {
+  // Project if any account has a rate, or any recurring payments exist
+  const hasProjection = allRecurring.length > 0 || includedAccounts.some(a => a.interest_rate && a.interest_rate > 0)
+
+  // Per-account monthly rate (AER → monthly compound rate)
+  const accountMonthlyRate: Record<string, number> = {}
+  for (const acc of includedAccounts) {
+    const annual = Number(acc.interest_rate ?? 0)
+    accountMonthlyRate[acc.id] = annual > 0 ? Math.pow(1 + annual / 100, 1 / 12) - 1 : 0
+  }
+
+  // Anchor at today if no history but something to project
+  if (allHistMonths.length === 0 && hasProjection) {
     const todayLabel = now.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
     const point: ChartPoint = { label: todayLabel, netWorth, projected: netWorth }
     for (const acc of includedAccounts) {
@@ -164,8 +175,17 @@ export default async function DashboardPage() {
     chartData.push(point)
   }
 
-  // Project forward
-  if (allRecurring.length > 0) {
+  // Also bridge last historical → projected when there IS history
+  if (allHistMonths.length > 0 && hasProjection && !chartData.find(p => p.projected !== undefined)) {
+    const last = chartData[chartData.length - 1]
+    last.projected = last.netWorth
+    for (const acc of includedAccounts) {
+      last[`p_${acc.id}`] = accountLastBalance[acc.id]
+    }
+  }
+
+  // Project forward month by month with compound growth + recurring payments
+  if (hasProjection) {
     for (let m = 1; m <= projMonths; m++) {
       const d = new Date(projStartDate.getFullYear(), projStartDate.getMonth() + m, 1)
       const label = d.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
@@ -174,7 +194,8 @@ export default async function DashboardPage() {
       for (const acc of includedAccounts) {
         const base = accountLastBalance[acc.id] ?? 0
         const delta = accountMonthlyNet[acc.id] ?? 0
-        const val = Math.round(base + delta * m)
+        const rate = accountMonthlyRate[acc.id] ?? 0
+        const val = Math.round(projectBalance(base, delta, rate, m))
         point[`p_${acc.id}`] = val
         total += val
       }
