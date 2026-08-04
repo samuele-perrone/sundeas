@@ -9,8 +9,10 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import Link from 'next/link'
 import { ArrowRight, TrendingUp } from 'lucide-react'
-import NetWorthChart from './NetWorthChart'
+import NetWorthChart, { type AccountSeries } from './NetWorthChart'
 import SnapshotButton from './SnapshotButton'
+
+const PALETTE = ['#059669', '#d97706', '#dc2626', '#7c3aed', '#0891b2', '#be185d', '#ea580c', '#0284c7', '#ca8a04', '#9333ea']
 
 const TYPE_LABELS: Record<string, string> = {
   current: 'Current', savings: 'Savings', isa: 'ISAs', pension: 'Pensions',
@@ -70,50 +72,117 @@ export default async function DashboardPage() {
   const monthlyExpenses = allRecurring.filter(r => r.type === 'expense').reduce((s, r) => s + toMonthlyAmount(r.amount, r.frequency), 0)
   const monthlyNet = monthlyIncome - monthlyExpenses
 
-  // Build net worth timeline from snapshots (grouped by month)
   const includeIds = new Set((accounts ?? []).filter(a => a.include_in_net_worth).map(a => a.id))
+
+  // Per-account monthly delta (income/expense/transfers each affect specific accounts)
+  const accountMonthlyNet: Record<string, number> = {}
+  for (const r of allRecurring) {
+    const monthly = toMonthlyAmount(r.amount, r.frequency)
+    if (r.type === 'income') {
+      accountMonthlyNet[r.account_id] = (accountMonthlyNet[r.account_id] ?? 0) + monthly
+    } else if (r.type === 'expense') {
+      accountMonthlyNet[r.account_id] = (accountMonthlyNet[r.account_id] ?? 0) - monthly
+    } else if (r.type === 'transfer') {
+      accountMonthlyNet[r.account_id] = (accountMonthlyNet[r.account_id] ?? 0) - monthly
+      if (r.to_account_id) {
+        accountMonthlyNet[r.to_account_id] = (accountMonthlyNet[r.to_account_id] ?? 0) + monthly
+      }
+    }
+  }
+
+  // Per-account historical snapshots grouped by month
+  const accountByMonth: Record<string, Record<string, number>> = {}
   const byMonth: Record<string, number> = {}
   for (const snap of snapshots ?? []) {
     if (!includeIds.has(snap.account_id)) continue
     const month = snap.snapshotted_at.slice(0, 7)
     byMonth[month] = (byMonth[month] ?? 0) + Number(snap.balance)
+    if (!accountByMonth[snap.account_id]) accountByMonth[snap.account_id] = {}
+    accountByMonth[snap.account_id][month] = Number(snap.balance)
   }
-  const historicalData = Object.entries(byMonth)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([month, nw]) => ({
-      label: new Date(month + '-01').toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }),
-      netWorth: nw,
-    }))
 
-  // Build projected data if recurring payments exist
-  type ChartPoint = { label: string; netWorth?: number; projected?: number }
+  const allHistMonths = [...new Set(Object.values(accountByMonth).flatMap(m => Object.keys(m)))].sort()
+  const lastHistMonth = allHistMonths.at(-1)
+
+  // Account series for chart — all included-in-net-worth accounts
+  const includedAccounts = (accounts ?? []).filter(a => a.include_in_net_worth)
+  const accountSeries: AccountSeries[] = includedAccounts.map((a, i) => ({
+    id: a.id,
+    name: a.institution_name ? `${a.institution_name} — ${a.name}` : a.name,
+    color: PALETTE[i % PALETTE.length],
+  }))
+
+  // Last known balance per account (from last snapshot, or current balance)
+  const accountLastBalance: Record<string, number> = {}
+  for (const acc of includedAccounts) {
+    const months = accountByMonth[acc.id]
+    if (months && Object.keys(months).length > 0) {
+      const sorted = Object.keys(months).sort()
+      accountLastBalance[acc.id] = months[sorted[sorted.length - 1]]
+    } else {
+      accountLastBalance[acc.id] = acc.balance ?? 0
+    }
+  }
+
+  const now = new Date()
+  const projMonths = Math.min((yearsLeft ?? 10) * 12, 120)
+  const projStartStr = lastHistMonth ?? now.toISOString().slice(0, 7)
+  const projStartDate = new Date(projStartStr + '-01')
+
+  type ChartPoint = Record<string, string | number | undefined>
   const chartData: ChartPoint[] = []
 
+  // Historical points
+  for (const month of allHistMonths) {
+    const point: ChartPoint = {
+      label: new Date(month + '-01').toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }),
+      netWorth: byMonth[month],
+    }
+    for (const acc of includedAccounts) {
+      if (accountByMonth[acc.id]?.[month] !== undefined) {
+        point[`h_${acc.id}`] = accountByMonth[acc.id][month]
+      }
+    }
+    // Bridge the last historical point into the projection
+    if (month === lastHistMonth && allRecurring.length > 0) {
+      point.projected = byMonth[month]
+      for (const acc of includedAccounts) {
+        point[`p_${acc.id}`] = accountLastBalance[acc.id]
+      }
+    }
+    chartData.push(point)
+  }
+
+  // Anchor at today if no history but recurring payments exist
+  if (allHistMonths.length === 0 && allRecurring.length > 0) {
+    const todayLabel = now.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
+    const point: ChartPoint = { label: todayLabel, netWorth, projected: netWorth }
+    for (const acc of includedAccounts) {
+      point[`h_${acc.id}`] = acc.balance ?? 0
+      point[`p_${acc.id}`] = acc.balance ?? 0
+    }
+    chartData.push(point)
+  }
+
+  // Project forward
   if (allRecurring.length > 0) {
-    const projMonths = Math.min((yearsLeft ?? 10) * 12, 120)
-    const base = historicalData.length > 0 ? historicalData[historicalData.length - 1].netWorth : netWorth
-    const now = new Date()
-
-    // Historical points (last one also gets projected to create visual continuity)
-    for (let i = 0; i < historicalData.length; i++) {
-      const isLast = i === historicalData.length - 1
-      chartData.push({ label: historicalData[i].label, netWorth: historicalData[i].netWorth, ...(isLast ? { projected: historicalData[i].netWorth } : {}) })
-    }
-
-    // If no historical data, anchor the projection at today
-    if (historicalData.length === 0) {
-      const todayLabel = now.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
-      chartData.push({ label: todayLabel, netWorth, projected: netWorth })
-    }
-
-    // Project forward month by month
     for (let m = 1; m <= projMonths; m++) {
-      const d = new Date(now.getFullYear(), now.getMonth() + m, 1)
+      const d = new Date(projStartDate.getFullYear(), projStartDate.getMonth() + m, 1)
       const label = d.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
-      chartData.push({ label, projected: Math.round(base + monthlyNet * m) })
+      const point: ChartPoint = { label }
+      let total = 0
+      for (const acc of includedAccounts) {
+        const base = accountLastBalance[acc.id] ?? 0
+        const delta = accountMonthlyNet[acc.id] ?? 0
+        const val = Math.round(base + delta * m)
+        point[`p_${acc.id}`] = val
+        total += val
+      }
+      point.projected = includedAccounts.length > 0
+        ? total
+        : Math.round((lastHistMonth ? (byMonth[lastHistMonth] ?? netWorth) : netWorth) + monthlyNet * m)
+      chartData.push(point)
     }
-  } else {
-    chartData.push(...historicalData)
   }
 
   return (
@@ -155,7 +224,7 @@ export default async function DashboardPage() {
               to start tracking your net worth.
             </p>
           )}
-          <NetWorthChart data={chartData} />
+          <NetWorthChart data={chartData} accountSeries={accountSeries} />
         </CardContent>
       </Card>
 
