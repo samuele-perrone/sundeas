@@ -12,11 +12,15 @@ import { ArrowRight, TrendingUp } from 'lucide-react'
 import NetWorthChart, { type AccountSeries } from './NetWorthChart'
 import SnapshotButton from './SnapshotButton'
 
-const PALETTE = ['#059669', '#d97706', '#dc2626', '#7c3aed', '#0891b2', '#be185d', '#ea580c', '#0284c7', '#ca8a04', '#9333ea']
-
 const TYPE_LABELS: Record<string, string> = {
   current: 'Current', savings: 'Savings', isa: 'ISAs', pension: 'Pensions',
   investment: 'Investments', mortgage: 'Mortgages', credit_card: 'Credit cards', other: 'Other',
+}
+
+const TYPE_COLORS: Record<string, string> = {
+  current: '#0891b2', savings: '#059669', isa: '#7c3aed',
+  pension: '#d97706', investment: '#0284c7', mortgage: '#dc2626',
+  credit_card: '#ea580c', other: '#6b7280',
 }
 
 // Future value: lump sum + regular contributions, compounded monthly
@@ -98,26 +102,43 @@ export default async function DashboardPage() {
     }
   }
 
-  // Per-account historical snapshots grouped by month
+  // Snapshots grouped by total month and by account type+month
   const accountByMonth: Record<string, Record<string, number>> = {}
+  const typeByMonth: Record<string, Record<string, number>> = {}
   const byMonth: Record<string, number> = {}
+  const accountTypeMap: Record<string, string> = {}
+  for (const acc of accounts ?? []) accountTypeMap[acc.id] = acc.type
+
   for (const snap of snapshots ?? []) {
     if (!includeIds.has(snap.account_id)) continue
     const month = snap.snapshotted_at.slice(0, 7)
-    byMonth[month] = (byMonth[month] ?? 0) + Number(snap.balance)
+    const bal = Number(snap.balance)
+    const type = accountTypeMap[snap.account_id]
+    byMonth[month] = (byMonth[month] ?? 0) + bal
     if (!accountByMonth[snap.account_id]) accountByMonth[snap.account_id] = {}
-    accountByMonth[snap.account_id][month] = Number(snap.balance)
+    accountByMonth[snap.account_id][month] = bal
+    if (type) {
+      if (!typeByMonth[type]) typeByMonth[type] = {}
+      typeByMonth[type][month] = (typeByMonth[type][month] ?? 0) + bal
+    }
   }
 
   const allHistMonths = [...new Set(Object.values(accountByMonth).flatMap(m => Object.keys(m)))].sort()
   const lastHistMonth = allHistMonths.at(-1)
 
-  // Account series for chart — all included-in-net-worth accounts
   const includedAccounts = (accounts ?? []).filter(a => a.include_in_net_worth)
-  const accountSeries: AccountSeries[] = includedAccounts.map((a, i) => ({
-    id: a.id,
-    name: a.institution_name ? `${a.institution_name} — ${a.name}` : a.name,
-    color: PALETTE[i % PALETTE.length],
+
+  // Group accounts by type for category-level chart series
+  const typeAccounts: Record<string, typeof includedAccounts> = {}
+  for (const acc of includedAccounts) {
+    if (!typeAccounts[acc.type]) typeAccounts[acc.type] = []
+    typeAccounts[acc.type].push(acc)
+  }
+
+  const categorySeries: AccountSeries[] = Object.keys(typeAccounts).map(type => ({
+    id: type,
+    name: TYPE_LABELS[type] ?? type,
+    color: TYPE_COLORS[type] ?? '#6b7280',
   }))
 
   // Last known balance per account (from last snapshot, or current balance)
@@ -140,15 +161,15 @@ export default async function DashboardPage() {
   type ChartPoint = Record<string, string | number | undefined>
   const chartData: ChartPoint[] = []
 
-  // Historical points
+  // Historical points — one value per category per month
   for (const month of allHistMonths) {
     const point: ChartPoint = {
       label: new Date(month + '-01').toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }),
       netWorth: byMonth[month],
     }
-    for (const acc of includedAccounts) {
-      if (accountByMonth[acc.id]?.[month] !== undefined) {
-        point[`h_${acc.id}`] = accountByMonth[acc.id][month]
+    for (const type of Object.keys(typeAccounts)) {
+      if (typeByMonth[type]?.[month] !== undefined) {
+        point[`h_${type}`] = typeByMonth[type][month]
       }
     }
     chartData.push(point)
@@ -168,40 +189,43 @@ export default async function DashboardPage() {
   if (allHistMonths.length === 0 && hasProjection) {
     const todayLabel = now.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
     const point: ChartPoint = { label: todayLabel, netWorth, projected: netWorth }
-    for (const acc of includedAccounts) {
-      point[`h_${acc.id}`] = acc.balance ?? 0
-      point[`p_${acc.id}`] = acc.balance ?? 0
+    for (const [type, accs] of Object.entries(typeAccounts)) {
+      const bal = accs.reduce((s, a) => s + (a.balance ?? 0), 0)
+      point[`h_${type}`] = bal
+      point[`p_${type}`] = bal
     }
     chartData.push(point)
   }
 
-  // Also bridge last historical → projected when there IS history
-  if (allHistMonths.length > 0 && hasProjection && !chartData.find(p => p.projected !== undefined)) {
+  // Bridge last historical point into the projection
+  if (allHistMonths.length > 0 && hasProjection) {
     const last = chartData[chartData.length - 1]
     last.projected = last.netWorth
-    for (const acc of includedAccounts) {
-      last[`p_${acc.id}`] = accountLastBalance[acc.id]
+    for (const [type, accs] of Object.entries(typeAccounts)) {
+      last[`p_${type}`] = accs.reduce((s, a) => s + (accountLastBalance[a.id] ?? 0), 0)
     }
   }
 
-  // Project forward month by month with compound growth + recurring payments
+  // Project forward — each account compounds individually, summed per category
   if (hasProjection) {
     for (let m = 1; m <= projMonths; m++) {
       const d = new Date(projStartDate.getFullYear(), projStartDate.getMonth() + m, 1)
       const label = d.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
       const point: ChartPoint = { label }
       let total = 0
-      for (const acc of includedAccounts) {
-        const base = accountLastBalance[acc.id] ?? 0
-        const delta = accountMonthlyNet[acc.id] ?? 0
-        const rate = accountMonthlyRate[acc.id] ?? 0
-        const val = Math.round(projectBalance(base, delta, rate, m))
-        point[`p_${acc.id}`] = val
-        total += val
+      for (const [type, accs] of Object.entries(typeAccounts)) {
+        const typeVal = accs.reduce((sum, acc) => {
+          const base = accountLastBalance[acc.id] ?? 0
+          const delta = accountMonthlyNet[acc.id] ?? 0
+          const rate = accountMonthlyRate[acc.id] ?? 0
+          return sum + projectBalance(base, delta, rate, m)
+        }, 0)
+        point[`p_${type}`] = Math.round(typeVal)
+        total += typeVal
       }
-      point.projected = includedAccounts.length > 0
-        ? total
-        : Math.round((lastHistMonth ? (byMonth[lastHistMonth] ?? netWorth) : netWorth) + monthlyNet * m)
+      point.projected = Math.round(total) || Math.round(
+        (lastHistMonth ? (byMonth[lastHistMonth] ?? netWorth) : netWorth) + monthlyNet * m
+      )
       chartData.push(point)
     }
   }
@@ -245,7 +269,7 @@ export default async function DashboardPage() {
               to start tracking your net worth.
             </p>
           )}
-          <NetWorthChart data={chartData} accountSeries={accountSeries} />
+          <NetWorthChart data={chartData} accountSeries={categorySeries} />
         </CardContent>
       </Card>
 
