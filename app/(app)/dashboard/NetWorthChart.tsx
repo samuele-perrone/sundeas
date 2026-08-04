@@ -1,10 +1,20 @@
 'use client'
+import { useState } from 'react'
 import {
   ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer,
 } from 'recharts'
 
 export type AccountSeries = { id: string; name: string; color: string }
+
+type FilterKey = '1M' | '3M' | '6M' | '1Y' | 'Retirement'
+const FILTERS: { key: FilterKey; label: string; months: number }[] = [
+  { key: '1M',         label: '1M',         months: 1 },
+  { key: '3M',         label: '3M',         months: 3 },
+  { key: '6M',         label: '6M',         months: 6 },
+  { key: '1Y',         label: '1Y',         months: 12 },
+  { key: 'Retirement', label: 'Retirement', months: Infinity },
+]
 
 function formatK(value: number) {
   if (Math.abs(value) >= 1_000_000) return `£${(value / 1_000_000).toFixed(1)}m`
@@ -72,6 +82,8 @@ export default function NetWorthChart({
   data: Record<string, unknown>[]
   accountSeries?: AccountSeries[]
 }) {
+  const [filter, setFilter] = useState<FilterKey>('Retirement')
+
   if (data.length < 2) {
     return (
       <div className="flex items-center justify-center h-40 text-sm text-muted-foreground">
@@ -80,8 +92,20 @@ export default function NetWorthChart({
     )
   }
 
+  // Split into historical (has netWorth) and pure projected (no netWorth)
+  const withHistory = data.filter(d => d.netWorth !== undefined)
+  const pureProjected = data.filter(d => d.projected !== undefined && d.netWorth === undefined)
+  const hasProjection = pureProjected.length > 0
+
+  // Apply filter — limit how many projected months are shown
+  const maxMonths = FILTERS.find(f => f.key === filter)?.months ?? Infinity
+  const filteredProjected = pureProjected.slice(0, maxMonths)
+
+  const displayData = [...withHistory, ...filteredProjected]
+
+  // Domain from visible data only
   const allValues: number[] = []
-  for (const point of data) {
+  for (const point of displayData) {
     for (const [key, val] of Object.entries(point)) {
       if (key !== 'label' && typeof val === 'number') allValues.push(val)
     }
@@ -90,13 +114,32 @@ export default function NetWorthChart({
   const max = Math.max(...allValues)
   const padding = (max - min) * 0.15 || 1000
   const positive = min >= 0
-  const hasProjection = data.some(d => d.projected !== undefined)
   const hasAccounts = accountSeries.length > 0
 
   return (
     <div>
+      {/* Filter pills */}
+      {hasProjection && (
+        <div className="flex items-center gap-1.5 mb-3 flex-wrap">
+          {FILTERS.map(opt => (
+            <button
+              key={opt.key}
+              type="button"
+              onClick={() => setFilter(opt.key)}
+              className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                filter === opt.key
+                  ? 'bg-indigo-600 text-white border-indigo-600'
+                  : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300 hover:text-slate-700'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       <ResponsiveContainer width="100%" height={260}>
-        <ComposedChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 8 }}>
+        <ComposedChart data={displayData} margin={{ top: 8, right: 8, bottom: 0, left: 8 }}>
           <defs>
             <linearGradient id="nwGradient" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#4f46e5" stopOpacity={positive ? 0.12 : 0.06} />
@@ -121,7 +164,7 @@ export default function NetWorthChart({
           />
           <Tooltip content={<CustomTooltip accountSeries={accountSeries} />} />
 
-          {/* Per-account historical lines */}
+          {/* Per-category historical lines */}
           {accountSeries.map(acc => (
             <Line
               key={`h_${acc.id}`}
@@ -137,7 +180,7 @@ export default function NetWorthChart({
             />
           ))}
 
-          {/* Per-account projected lines (dashed) */}
+          {/* Per-category projected lines (dashed) */}
           {accountSeries.map(acc => (
             <Line
               key={`p_${acc.id}`}
