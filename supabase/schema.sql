@@ -123,6 +123,7 @@ create table if not exists public.chat_messages (
   user_id uuid not null references auth.users(id) on delete cascade,
   role text not null,                    -- 'user' | 'assistant'
   content text not null,
+  conversation_id uuid,
   created_at timestamptz not null default now()
 );
 

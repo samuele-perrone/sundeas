@@ -1,6 +1,6 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
-import { Send, AlertTriangle, SquarePen } from 'lucide-react'
+import { Send, AlertTriangle, SquarePen, History } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/ui/button'
@@ -15,17 +15,44 @@ const SUGGESTED = [
   'What actions should I take in the next 6 months?',
 ]
 
+type ConversationSummary = {
+  id: string
+  startedAt: string
+  lastAt: string
+  firstUserMessage: string
+  messageCount: number
+}
+
+function relativeDate(dateStr: string): string {
+  const d = new Date(dateStr)
+  const now = new Date()
+  const diffDays = Math.floor((now.getTime() - d.getTime()) / 86_400_000)
+  if (diffDays === 0) return 'Today'
+  if (diffDays === 1) return 'Yesterday'
+  if (diffDays < 7) return `${diffDays} days ago`
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' })
+}
+
 export default function ChatUI() {
-  const { messages, setMessages, clearMessages, loaded, loadMessages, appendMessages } = useChatMessages()
+  const {
+    messages, setMessages,
+    conversationId, loaded,
+    loadCurrentConversation, switchConversation, startNewConversation,
+    appendMessages,
+  } = useChatMessages()
+
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+  const [conversations, setConversations] = useState<ConversationSummary[]>([])
+  const [loadingHistory, setLoadingHistory] = useState(false)
+
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const historyRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    loadMessages()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  useEffect(() => { loadCurrentConversation() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -37,6 +64,35 @@ export default function ChatUI() {
     ta.style.height = 'auto'
     ta.style.height = `${Math.min(ta.scrollHeight, 160)}px`
   }, [input])
+
+  // Close history dropdown on outside click
+  useEffect(() => {
+    if (!showHistory) return
+    const handler = (e: MouseEvent) => {
+      if (historyRef.current && !historyRef.current.contains(e.target as Node)) {
+        setShowHistory(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showHistory])
+
+  const openHistory = async () => {
+    setShowHistory(prev => !prev)
+    if (conversations.length > 0) return
+    setLoadingHistory(true)
+    try {
+      const res = await fetch('/api/chat/conversations')
+      if (res.ok) setConversations(await res.json())
+    } finally {
+      setLoadingHistory(false)
+    }
+  }
+
+  const handleSwitchConversation = async (id: string) => {
+    setShowHistory(false)
+    await switchConversation(id)
+  }
 
   const send = async (text: string) => {
     const trimmed = text.trim()
@@ -56,12 +112,10 @@ export default function ChatUI() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: outgoing }),
       })
-
       if (!res.ok || !res.body) throw new Error(await res.text())
 
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
-
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
@@ -69,22 +123,18 @@ export default function ChatUI() {
         assistantContent += chunk
         setMessages(prev => {
           const updated = [...prev]
-          updated[updated.length - 1] = {
-            role: 'assistant',
-            content: updated[updated.length - 1].content + chunk,
-          }
+          updated[updated.length - 1] = { role: 'assistant', content: updated[updated.length - 1].content + chunk }
           return updated
         })
       }
 
       await appendMessages([userMsg, { role: 'assistant', content: assistantContent }])
+      // Refresh conversation list so history stays fresh
+      setConversations([])
     } catch {
       setMessages(prev => {
         const updated = [...prev]
-        updated[updated.length - 1] = {
-          role: 'assistant',
-          content: 'Sorry, something went wrong. Please try again.',
-        }
+        updated[updated.length - 1] = { role: 'assistant', content: 'Sorry, something went wrong. Please try again.' }
         return updated
       })
     } finally {
@@ -94,14 +144,7 @@ export default function ChatUI() {
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      send(input)
-    }
-  }
-
-  const handleClear = async () => {
-    await clearMessages()
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input) }
   }
 
   return (
@@ -110,18 +153,67 @@ export default function ChatUI() {
       <div className="px-8 py-5 border-b border-border shrink-0">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-bold tracking-tight">Financial advisor</h1>
-          {messages.length > 0 && (
+          <div className="flex items-center gap-3" ref={historyRef}>
+            {/* History dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={openHistory}
+                disabled={streaming}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                aria-label="View conversation history"
+              >
+                <History className="w-3.5 h-3.5" aria-hidden="true" />
+                History
+              </button>
+              {showHistory && (
+                <div className="absolute right-0 top-7 z-50 w-72 rounded-xl border border-border bg-white shadow-lg overflow-hidden">
+                  <p className="px-3 py-2 text-xs font-medium text-muted-foreground border-b border-border">
+                    Past conversations
+                  </p>
+                  {loadingHistory ? (
+                    <div className="flex items-center gap-1.5 px-3 py-3">
+                      <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:-0.3s]" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:-0.15s]" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 animate-bounce" />
+                    </div>
+                  ) : conversations.length === 0 ? (
+                    <p className="px-3 py-3 text-xs text-muted-foreground">No past conversations.</p>
+                  ) : (
+                    <ul className="max-h-72 overflow-y-auto">
+                      {conversations.map(conv => (
+                        <li key={conv.id}>
+                          <button
+                            type="button"
+                            onClick={() => handleSwitchConversation(conv.id)}
+                            className={`w-full text-left px-3 py-2.5 hover:bg-accent/50 transition-colors border-b border-border/50 last:border-0 ${conversationId === conv.id ? 'bg-accent/30' : ''}`}
+                          >
+                            <p className="text-xs font-medium text-foreground truncate leading-snug">
+                              {conv.firstUserMessage || '(empty)'}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground mt-0.5">
+                              {relativeDate(conv.lastAt)} · {conv.messageCount} messages
+                            </p>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+
             <button
               type="button"
-              onClick={handleClear}
+              onClick={startNewConversation}
               disabled={streaming}
               className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
               aria-label="Start new conversation"
             >
               <SquarePen className="w-3.5 h-3.5" aria-hidden="true" />
-              New conversation
+              New
             </button>
-          )}
+          </div>
         </div>
         <div className="flex items-start gap-1.5 mt-1">
           <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-px" aria-hidden="true" />
@@ -188,12 +280,8 @@ export default function ChatUI() {
                             {children}
                           </th>
                         ),
-                        td: ({ children }) => (
-                          <td className="px-3 py-2 border border-border">{children}</td>
-                        ),
-                        tr: ({ children }) => (
-                          <tr className="even:bg-muted/20">{children}</tr>
-                        ),
+                        td: ({ children }) => <td className="px-3 py-2 border border-border">{children}</td>,
+                        tr: ({ children }) => <tr className="even:bg-muted/20">{children}</tr>,
                         p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
                         ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-0.5">{children}</ul>,
                         ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-0.5">{children}</ol>,
