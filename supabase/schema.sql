@@ -1,7 +1,7 @@
 -- Wealth Management Schema
 
 -- User profiles (extends auth.users)
-create table public.profiles (
+create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   display_name text,
   date_of_birth date,
@@ -10,7 +10,7 @@ create table public.profiles (
 );
 
 -- Retirement goal per user
-create table public.goals (
+create table if not exists public.goals (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   target_retirement_age integer not null default 57,
@@ -22,7 +22,7 @@ create table public.goals (
 );
 
 -- Connected bank institutions (via TrueLayer)
-create table public.connections (
+create table if not exists public.connections (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   provider text not null default 'truelayer',  -- 'truelayer' | 'manual'
@@ -35,11 +35,14 @@ create table public.connections (
 );
 
 -- Accounts (current, savings, ISA, pension, investment, etc.)
-create table public.accounts (
+create table if not exists public.accounts (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   connection_id uuid references public.connections(id) on delete set null,
   truelayer_account_id text,                -- external ID from TrueLayer
+  institution_name text,                    -- provider name e.g. 'Vanguard', 'Hargreaves Lansdown'
+  interest_rate numeric(5,3),               -- % rate (AER for savings, p.a. for investments/mortgages)
+  rate_source text default 'ai',            -- 'ai' | 'manual'
   name text not null,
   type text not null,                       -- 'current' | 'savings' | 'isa' | 'pension' | 'investment' | 'mortgage' | 'credit_card' | 'other'
   currency text not null default 'GBP',
@@ -53,7 +56,7 @@ create table public.accounts (
 );
 
 -- Balance snapshots (taken weekly/monthly for charting)
-create table public.balance_snapshots (
+create table if not exists public.balance_snapshots (
   id uuid primary key default gen_random_uuid(),
   account_id uuid not null references public.accounts(id) on delete cascade,
   balance numeric(14,2) not null,
@@ -61,7 +64,7 @@ create table public.balance_snapshots (
 );
 
 -- Transactions (synced from TrueLayer or entered manually)
-create table public.transactions (
+create table if not exists public.transactions (
   id uuid primary key default gen_random_uuid(),
   account_id uuid not null references public.accounts(id) on delete cascade,
   truelayer_transaction_id text,
@@ -78,7 +81,7 @@ create table public.transactions (
 );
 
 -- TODO action items for the user
-create table public.todos (
+create table if not exists public.todos (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   title text not null,
@@ -91,7 +94,7 @@ create table public.todos (
 );
 
 -- Weekly/monthly digest snapshots (for email + history)
-create table public.digests (
+create table if not exists public.digests (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   net_worth numeric(14,2),

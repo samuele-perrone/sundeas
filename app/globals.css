@@ -1,24 +1,46 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg: #f7f8fa;
-  --color-surface: #ffffff;
-  --color-border: #e4e7ec;
-  --color-text: #0f1117;
-  --color-muted: #6b7280;
-  --color-accent: #2563eb;
-  --color-accent-hover: #1d4ed8;
-  --color-positive: #059669;
-  --color-negative: #dc2626;
-  --color-warning: #d97706;
+  /* Core palette */
+  --color-background: #f8fafc;
+  --color-foreground: #0f172a;
+  --color-card: #ffffff;
+  --color-card-foreground: #0f172a;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #0f172a;
+
+  /* Brand */
+  --color-primary: #4f46e5;
+  --color-primary-foreground: #ffffff;
+
+  /* Secondary / muted */
+  --color-secondary: #f1f5f9;
+  --color-secondary-foreground: #0f172a;
+  --color-muted: #f1f5f9;
+  --color-muted-foreground: #64748b;
+
+  /* Accent (hover states) */
+  --color-accent: #eef2ff;
+  --color-accent-foreground: #4338ca;
+
+  /* Status */
+  --color-destructive: #dc2626;
+
+  /* Chrome */
+  --color-border: #e2e8f0;
+  --color-input: #e2e8f0;
+  --color-ring: #6366f1;
+
+  /* Sidebar */
+  --color-sidebar: #0f172a;
+
+  --radius: 0.625rem;
 }
 
-@variant dark (&:where(.dark, .dark *));
-
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
-  margin: 0;
-  padding: 0;
 }
 
 html {
@@ -27,13 +49,8 @@ html {
 
 body {
   min-height: 100%;
-  background: #f7f8fa;
-  color: #0f1117;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background-color: var(--color-background);
+  color: var(--color-foreground);
   -webkit-font-smoothing: antialiased;
-}
-
-.dark body {
-  background: #0f1117;
-  color: #e8eaf0;
+  -moz-osx-font-smoothing: grayscale;
 }
