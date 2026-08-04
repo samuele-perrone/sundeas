@@ -101,7 +101,9 @@ async function buildSystemPrompt(supabase: Awaited<ReturnType<typeof createClien
     ageStr = `Age: ${age}`
   }
 
-  return `You are a knowledgeable personal finance assistant. You have access to the user's real financial data below. Use it to give specific, actionable, and personalised advice tailored to their actual situation and numbers.
+  const fetchedAt = new Date().toLocaleString('en-GB', { dateStyle: 'full', timeStyle: 'short', timeZone: 'Europe/London' })
+
+  return `You are a knowledgeable personal finance assistant. You have access to the user's LIVE financial data, fetched directly from their accounts right now (${fetchedAt}). This data is always current — it is re-fetched from the database on every single message. Do NOT say you lack access to live data or that your information is from the start of the conversation. The figures below are accurate as of this moment.
 
 USER PROFILE:
 ${profile?.display_name ? `Name: ${profile.display_name}` : ''}
