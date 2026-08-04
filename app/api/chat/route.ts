@@ -55,7 +55,8 @@ async function buildSystemPrompt(supabase: Awaited<ReturnType<typeof createClien
       const parts = [`${a.institution_name ? `${a.institution_name} — ` : ''}${a.name}: ${formatGBP(a.balance ?? 0)}`]
       if (a.interest_rate) parts.push(`${a.interest_rate}% AER`)
       if (!a.include_in_net_worth) parts.push('(excluded from net worth)')
-      return `    - ${parts.join(' · ')}`
+      const line = `    - ${parts.join(' · ')}`
+      return a.notes ? `${line}\n      Notes: ${a.notes}` : line
     })
     return `  ${label}:\n${lines.join('\n')}`
   }).join('\n')

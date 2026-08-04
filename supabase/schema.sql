@@ -117,6 +117,15 @@ create table if not exists public.digests (
   sent_at timestamptz default now()
 );
 
+-- AI advisor chat history
+create table if not exists public.chat_messages (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  role text not null,                    -- 'user' | 'assistant'
+  content text not null,
+  created_at timestamptz not null default now()
+);
+
 -- RLS policies
 alter table public.profiles enable row level security;
 alter table public.goals enable row level security;
@@ -140,6 +149,9 @@ alter table public.recurring_payments enable row level security;
 create policy "users manage own recurring payments" on public.recurring_payments
   for all using (auth.uid() = user_id);
 create policy "users see own digests" on public.digests for all using (auth.uid() = user_id);
+
+alter table public.chat_messages enable row level security;
+create policy "users see own chat messages" on public.chat_messages for all using (auth.uid() = user_id);
 
 -- Auto-create profile on sign-up
 create or replace function public.handle_new_user()

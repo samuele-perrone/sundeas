@@ -1,7 +1,8 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
-import { Send, AlertTriangle } from 'lucide-react'
+import { Send, AlertTriangle, SquarePen } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { Button } from '@/components/ui/button'
 import { useChatMessages } from '@/app/components/ChatContext'
 
@@ -15,11 +16,16 @@ const SUGGESTED = [
 ]
 
 export default function ChatUI() {
-  const { messages, setMessages } = useChatMessages()
+  const { messages, setMessages, clearMessages, loaded, loadMessages, appendMessages } = useChatMessages()
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    loadMessages()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -42,6 +48,8 @@ export default function ChatUI() {
     setInput('')
     setStreaming(true)
 
+    let assistantContent = ''
+
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
@@ -58,6 +66,7 @@ export default function ChatUI() {
         const { done, value } = await reader.read()
         if (done) break
         const chunk = decoder.decode(value, { stream: true })
+        assistantContent += chunk
         setMessages(prev => {
           const updated = [...prev]
           updated[updated.length - 1] = {
@@ -67,6 +76,8 @@ export default function ChatUI() {
           return updated
         })
       }
+
+      await appendMessages([userMsg, { role: 'assistant', content: assistantContent }])
     } catch {
       setMessages(prev => {
         const updated = [...prev]
@@ -89,11 +100,29 @@ export default function ChatUI() {
     }
   }
 
+  const handleClear = async () => {
+    await clearMessages()
+  }
+
   return (
     <div className="flex flex-col h-screen">
       {/* Header */}
       <div className="px-8 py-5 border-b border-border shrink-0">
-        <h1 className="text-xl font-bold tracking-tight">Financial advisor</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-bold tracking-tight">Financial advisor</h1>
+          {messages.length > 0 && (
+            <button
+              type="button"
+              onClick={handleClear}
+              disabled={streaming}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+              aria-label="Start new conversation"
+            >
+              <SquarePen className="w-3.5 h-3.5" aria-hidden="true" />
+              New conversation
+            </button>
+          )}
+        </div>
         <div className="flex items-start gap-1.5 mt-1">
           <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-px" aria-hidden="true" />
           <p className="text-xs text-muted-foreground">
@@ -105,7 +134,13 @@ export default function ChatUI() {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-8 py-6">
-        {messages.length === 0 ? (
+        {!loaded ? (
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:-0.3s]" />
+            <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:-0.15s]" />
+            <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 animate-bounce" />
+          </div>
+        ) : messages.length === 0 ? (
           <div className="max-w-2xl space-y-5">
             <p className="text-sm text-muted-foreground">
               Ask me anything about your finances. I have full context of your accounts, net worth, budget, and retirement goal — so I can give you specific, numbers-based guidance.
@@ -140,7 +175,25 @@ export default function ChatUI() {
                 ) : (
                   <div className="rounded-2xl px-4 py-3 text-sm leading-relaxed bg-card border border-border text-foreground prose-sm max-w-full">
                     <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
                       components={{
+                        table: ({ children }) => (
+                          <div className="overflow-x-auto my-3">
+                            <table className="w-full text-sm border-collapse">{children}</table>
+                          </div>
+                        ),
+                        thead: ({ children }) => <thead className="bg-muted/50">{children}</thead>,
+                        th: ({ children }) => (
+                          <th className="px-3 py-2 text-left font-semibold border border-border text-xs uppercase tracking-wide text-muted-foreground">
+                            {children}
+                          </th>
+                        ),
+                        td: ({ children }) => (
+                          <td className="px-3 py-2 border border-border">{children}</td>
+                        ),
+                        tr: ({ children }) => (
+                          <tr className="even:bg-muted/20">{children}</tr>
+                        ),
                         p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
                         ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-0.5">{children}</ul>,
                         ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-0.5">{children}</ol>,
@@ -181,14 +234,14 @@ export default function ChatUI() {
             onKeyDown={handleKeyDown}
             placeholder="Ask about your finances… (Enter to send, Shift+Enter for new line)"
             rows={1}
-            disabled={streaming}
+            disabled={streaming || !loaded}
             className="flex-1 resize-none rounded-xl border border-input bg-white px-4 py-2.5 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30 transition-colors overflow-y-auto disabled:opacity-60"
             style={{ minHeight: '44px', maxHeight: '160px' }}
             aria-label="Message"
           />
           <Button
             onClick={() => send(input)}
-            disabled={streaming || !input.trim()}
+            disabled={streaming || !input.trim() || !loaded}
             className="gap-2 shrink-0"
           >
             <Send className="w-3.5 h-3.5" aria-hidden="true" />
