@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import SignOutButton from '@/app/components/SignOutButton'
 import AppNav from '@/app/components/AppNav'
+import { Providers } from '@/app/components/Providers'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -38,7 +39,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </aside>
 
       <main className="flex-1 min-h-screen overflow-y-auto">
-        {children}
+        <Providers>{children}</Providers>
       </main>
     </div>
   )
