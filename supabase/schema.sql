@@ -89,6 +89,8 @@ create table if not exists public.recurring_payments (
   amount numeric(12,2) not null,
   frequency text not null,               -- 'weekly' | 'monthly' | 'annual'
   type text not null,                    -- 'income' | 'expense'
+  category text,                         -- income: salary|dividends|rental|pension|freelance|benefits|other  expense: rent|mortgage|bills|subscriptions|insurance|direct_debit|transport|childcare|other
+  to_account_id uuid references public.accounts(id) on delete set null,  -- only for type='transfer'
   created_at timestamptz not null default now()
 );
 
