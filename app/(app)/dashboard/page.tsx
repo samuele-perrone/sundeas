@@ -185,6 +185,16 @@ export default async function DashboardPage() {
     accountMonthlyRate[acc.id] = annual > 0 ? Math.pow(1 + annual / 100, 1 / 12) - 1 : 0
   }
 
+  // Mortgage payments entered as expenses on OTHER accounts (e.g. current account, category='mortgage')
+  // These aren't captured in accountMonthlyNet for the mortgage account, so detect them separately.
+  const mortgageAccountIds = new Set(includedAccounts.filter(a => a.type === 'mortgage').map(a => a.id))
+  const numMortgages = mortgageAccountIds.size
+  const externalMortgagePayment = numMortgages > 0
+    ? allRecurring
+        .filter(r => r.type === 'expense' && r.category === 'mortgage' && !mortgageAccountIds.has(r.account_id))
+        .reduce((s, r) => s + toMonthlyAmount(r.amount, r.frequency), 0) / numMortgages
+    : 0
+
   // Anchor at today if no history but something to project
   if (allHistMonths.length === 0 && hasProjection) {
     const todayLabel = now.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
@@ -217,10 +227,23 @@ export default async function DashboardPage() {
         const typeVal = accs.reduce((sum, acc) => {
           const base = accountLastBalance[acc.id] ?? 0
           const rate = accountMonthlyRate[acc.id] ?? 0
-          // Liability accounts (negative balance): payments reduce the debt, so flip the sign.
-          // e.g. a £1,200 expense on a mortgage account should bring balance toward 0, not further away.
           const rawDelta = accountMonthlyNet[acc.id] ?? 0
-          const delta = base < 0 ? -rawDelta : rawDelta
+
+          let delta: number
+          if (base < 0 && rawDelta < 0) {
+            // Expense directly on a negative-balance account (e.g. expense on mortgage account):
+            // this is a debt payment — flip sign so it pushes balance toward 0.
+            delta = -rawDelta
+          } else {
+            // Transfer in (already positive → reduces negative balance correctly),
+            // regular positive-balance accounts, or no payment.
+            delta = rawDelta
+          }
+          // If no payment is directly linked to a mortgage account, look for expenses
+          // entered on other accounts with category='mortgage' (most common pattern).
+          if (acc.type === 'mortgage' && rawDelta === 0) {
+            delta += externalMortgagePayment
+          }
           return sum + projectBalance(base, delta, rate, m)
         }, 0)
         point[`p_${type}`] = Math.round(typeVal)
