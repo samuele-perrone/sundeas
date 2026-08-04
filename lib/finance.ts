@@ -47,6 +47,12 @@ export function calcRequiredMonthlySaving(
   return Math.max(0, (targetLumpSum - netWorth) / months)
 }
 
+export function toMonthlyAmount(amount: number, frequency: string): number {
+  if (frequency === 'weekly') return (amount * 52) / 12
+  if (frequency === 'annual') return amount / 12
+  return amount // monthly
+}
+
 /** Group transactions into a category → total spend map (absolute values, debits only). */
 export function sumByCategory(transactions: Transaction[]): Record<string, number> {
   const result: Record<string, number> = {}

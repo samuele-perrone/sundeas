@@ -1,5 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
-import { calcNetWorth, calcRetirementProgress, calcYearsToRetirement, calcRequiredMonthlySaving, formatGBP } from '@/lib/finance'
+import {
+  calcNetWorth, calcRetirementProgress, calcYearsToRetirement,
+  calcRequiredMonthlySaving, toMonthlyAmount, formatGBP,
+} from '@/lib/finance'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
@@ -36,6 +39,7 @@ export default async function DashboardPage() {
     { data: goal },
     { data: todos },
     { data: snapshots },
+    { data: recurring },
   ] = await Promise.all([
     supabase.from('profiles').select('*').eq('id', user!.id).single(),
     supabase.from('goals').select('*').eq('user_id', user!.id).order('created_at', { ascending: false }).limit(1).single(),
@@ -43,6 +47,7 @@ export default async function DashboardPage() {
     accountIds.length > 0
       ? supabase.from('balance_snapshots').select('account_id, balance, snapshotted_at').in('account_id', accountIds).order('snapshotted_at', { ascending: true })
       : { data: [] },
+    supabase.from('recurring_payments').select('*').eq('user_id', user!.id),
   ])
 
   const netWorth = calcNetWorth(accounts ?? [])
@@ -59,21 +64,57 @@ export default async function DashboardPage() {
     byType[acc.type] = (byType[acc.type] ?? 0) + (acc.balance ?? 0)
   }
 
-  // Build net worth timeline from snapshots
-  // Group by month (YYYY-MM), sum balances of all accounts per month
+  // Monthly net from recurring payments
+  const allRecurring = recurring ?? []
+  const monthlyIncome = allRecurring.filter(r => r.type === 'income').reduce((s, r) => s + toMonthlyAmount(r.amount, r.frequency), 0)
+  const monthlyExpenses = allRecurring.filter(r => r.type === 'expense').reduce((s, r) => s + toMonthlyAmount(r.amount, r.frequency), 0)
+  const monthlyNet = monthlyIncome - monthlyExpenses
+
+  // Build net worth timeline from snapshots (grouped by month)
   const includeIds = new Set((accounts ?? []).filter(a => a.include_in_net_worth).map(a => a.id))
   const byMonth: Record<string, number> = {}
   for (const snap of snapshots ?? []) {
     if (!includeIds.has(snap.account_id)) continue
-    const month = snap.snapshotted_at.slice(0, 7) // YYYY-MM
+    const month = snap.snapshotted_at.slice(0, 7)
     byMonth[month] = (byMonth[month] ?? 0) + Number(snap.balance)
   }
-  const chartData = Object.entries(byMonth)
+  const historicalData = Object.entries(byMonth)
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([month, netWorth]) => ({
+    .map(([month, nw]) => ({
       label: new Date(month + '-01').toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }),
-      netWorth,
+      netWorth: nw,
     }))
+
+  // Build projected data if recurring payments exist
+  type ChartPoint = { label: string; netWorth?: number; projected?: number }
+  const chartData: ChartPoint[] = []
+
+  if (allRecurring.length > 0) {
+    const projMonths = Math.min((yearsLeft ?? 10) * 12, 120)
+    const base = historicalData.length > 0 ? historicalData[historicalData.length - 1].netWorth : netWorth
+    const now = new Date()
+
+    // Historical points (last one also gets projected to create visual continuity)
+    for (let i = 0; i < historicalData.length; i++) {
+      const isLast = i === historicalData.length - 1
+      chartData.push({ label: historicalData[i].label, netWorth: historicalData[i].netWorth, ...(isLast ? { projected: historicalData[i].netWorth } : {}) })
+    }
+
+    // If no historical data, anchor the projection at today
+    if (historicalData.length === 0) {
+      const todayLabel = now.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
+      chartData.push({ label: todayLabel, netWorth, projected: netWorth })
+    }
+
+    // Project forward month by month
+    for (let m = 1; m <= projMonths; m++) {
+      const d = new Date(now.getFullYear(), now.getMonth() + m, 1)
+      const label = d.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
+      chartData.push({ label, projected: Math.round(base + monthlyNet * m) })
+    }
+  } else {
+    chartData.push(...historicalData)
+  }
 
   return (
     <div className="p-10 max-w-4xl space-y-6">
@@ -92,13 +133,20 @@ export default async function DashboardPage() {
             <SnapshotButton />
           </div>
         </CardHeader>
-        <CardContent className="space-y-6">
-          <p
-            className={`text-4xl font-bold tracking-tight ${netWorth < 0 ? 'text-destructive' : 'text-foreground'}`}
-            aria-live="polite"
-          >
-            {formatGBP(netWorth)}
-          </p>
+        <CardContent className="space-y-4">
+          <div>
+            <p
+              className={`text-4xl font-bold tracking-tight ${netWorth < 0 ? 'text-destructive' : 'text-foreground'}`}
+              aria-live="polite"
+            >
+              {formatGBP(netWorth)}
+            </p>
+            {allRecurring.length > 0 && (
+              <p className={`text-sm mt-1 ${monthlyNet >= 0 ? 'text-emerald-600' : 'text-destructive'}`}>
+                {monthlyNet >= 0 ? '+' : ''}{formatGBP(monthlyNet)}/month net from budget
+              </p>
+            )}
+          </div>
           {(accounts ?? []).length === 0 && (
             <p className="text-sm text-muted-foreground">
               <Link href="/accounts" className="text-primary underline-offset-4 hover:underline">
@@ -203,7 +251,7 @@ export default async function DashboardPage() {
           {(todos ?? []).length === 0 ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <TrendingUp className="w-4 h-4 text-emerald-500" aria-hidden="true" />
-              No open action items — you're on track.
+              No open action items — you&apos;re on track.
             </div>
           ) : (
             <ul className="space-y-3" aria-label="Open action items">

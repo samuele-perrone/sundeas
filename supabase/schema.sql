@@ -80,6 +80,18 @@ create table if not exists public.transactions (
   unique (account_id, truelayer_transaction_id)
 );
 
+-- Recurring income and expense items, linked to an account
+create table if not exists public.recurring_payments (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  account_id uuid not null references public.accounts(id) on delete cascade,
+  name text not null,
+  amount numeric(12,2) not null,
+  frequency text not null,               -- 'weekly' | 'monthly' | 'annual'
+  type text not null,                    -- 'income' | 'expense'
+  created_at timestamptz not null default now()
+);
+
 -- TODO action items for the user
 create table if not exists public.todos (
   id uuid primary key default gen_random_uuid(),
@@ -122,6 +134,9 @@ create policy "users see own snapshots" on public.balance_snapshots for all
 create policy "users see own transactions" on public.transactions for all
   using (account_id in (select id from public.accounts where user_id = auth.uid()));
 create policy "users see own todos" on public.todos for all using (auth.uid() = user_id);
+alter table public.recurring_payments enable row level security;
+create policy "users manage own recurring payments" on public.recurring_payments
+  for all using (auth.uid() = user_id);
 create policy "users see own digests" on public.digests for all using (auth.uid() = user_id);
 
 -- Auto-create profile on sign-up

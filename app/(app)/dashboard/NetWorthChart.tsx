@@ -4,7 +4,7 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 
-type DataPoint = { label: string; netWorth: number }
+type DataPoint = { label: string; netWorth?: number; projected?: number }
 
 function formatK(value: number) {
   if (Math.abs(value) >= 1_000_000) return `£${(value / 1_000_000).toFixed(1)}m`
@@ -14,15 +14,21 @@ function formatK(value: number) {
 
 function CustomTooltip({ active, payload, label }: {
   active?: boolean
-  payload?: Array<{ value: number }>
+  payload?: Array<{ value: number; dataKey: string }>
   label?: string
 }) {
   if (!active || !payload?.length) return null
+  const historical = payload.find(p => p.dataKey === 'netWorth')
+  const projected = payload.find(p => p.dataKey === 'projected')
+  const value = historical?.value ?? projected?.value
+  if (value === undefined) return null
   return (
     <div className="rounded-xl bg-white border border-slate-200 shadow-lg px-3 py-2">
-      <p className="text-xs text-slate-500 mb-0.5">{label}</p>
+      <p className="text-xs text-slate-500 mb-0.5">
+        {label}{projected && !historical ? ' (projected)' : ''}
+      </p>
       <p className="text-sm font-semibold text-slate-900">
-        {new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(payload[0].value)}
+        {new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(value)}
       </p>
     </div>
   )
@@ -32,15 +38,17 @@ export default function NetWorthChart({ data }: { data: DataPoint[] }) {
   if (data.length < 2) {
     return (
       <div className="flex items-center justify-center h-40 text-sm text-muted-foreground">
-        Take at least two snapshots to see your net worth over time.
+        Take at least two snapshots, or add income/expenses in Budget to see a projection.
       </div>
     )
   }
 
-  const min = Math.min(...data.map(d => d.netWorth))
-  const max = Math.max(...data.map(d => d.netWorth))
+  const allValues = data.flatMap(d => [d.netWorth, d.projected].filter((v): v is number => v !== undefined))
+  const min = Math.min(...allValues)
+  const max = Math.max(...allValues)
   const padding = (max - min) * 0.15 || 1000
   const positive = min >= 0
+  const hasProjection = data.some(d => d.projected !== undefined)
 
   return (
     <ResponsiveContainer width="100%" height={220}>
@@ -57,6 +65,7 @@ export default function NetWorthChart({ data }: { data: DataPoint[] }) {
           tick={{ fontSize: 11, fill: '#94a3b8' }}
           axisLine={false}
           tickLine={false}
+          interval="preserveStartEnd"
         />
         <YAxis
           tickFormatter={formatK}
@@ -67,6 +76,7 @@ export default function NetWorthChart({ data }: { data: DataPoint[] }) {
           domain={[min - padding, max + padding]}
         />
         <Tooltip content={<CustomTooltip />} />
+        {/* Historical */}
         <Area
           type="monotone"
           dataKey="netWorth"
@@ -75,7 +85,23 @@ export default function NetWorthChart({ data }: { data: DataPoint[] }) {
           fill="url(#nwGradient)"
           dot={{ fill: '#4f46e5', r: 3, strokeWidth: 0 }}
           activeDot={{ r: 5, strokeWidth: 0 }}
+          connectNulls={false}
         />
+        {/* Projected */}
+        {hasProjection && (
+          <Area
+            type="monotone"
+            dataKey="projected"
+            stroke="#4f46e5"
+            strokeWidth={1.5}
+            strokeDasharray="5 3"
+            strokeOpacity={0.45}
+            fill="none"
+            dot={false}
+            activeDot={{ r: 4, strokeWidth: 0, fillOpacity: 0.5 }}
+            connectNulls
+          />
+        )}
       </AreaChart>
     </ResponsiveContainer>
   )
