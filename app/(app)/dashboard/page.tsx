@@ -216,8 +216,11 @@ export default async function DashboardPage() {
       for (const [type, accs] of Object.entries(typeAccounts)) {
         const typeVal = accs.reduce((sum, acc) => {
           const base = accountLastBalance[acc.id] ?? 0
-          const delta = accountMonthlyNet[acc.id] ?? 0
           const rate = accountMonthlyRate[acc.id] ?? 0
+          // Liability accounts (negative balance): payments reduce the debt, so flip the sign.
+          // e.g. a £1,200 expense on a mortgage account should bring balance toward 0, not further away.
+          const rawDelta = accountMonthlyNet[acc.id] ?? 0
+          const delta = base < 0 ? -rawDelta : rawDelta
           return sum + projectBalance(base, delta, rate, m)
         }, 0)
         point[`p_${type}`] = Math.round(typeVal)
