@@ -102,24 +102,30 @@ export default async function DashboardPage() {
     }
   }
 
-  // Snapshots grouped by total month and by account type+month
+  // Snapshots: keep only the LAST balance per account per month (snapshots ordered ASC)
   const accountByMonth: Record<string, Record<string, number>> = {}
-  const typeByMonth: Record<string, Record<string, number>> = {}
-  const byMonth: Record<string, number> = {}
   const accountTypeMap: Record<string, string> = {}
   for (const acc of accounts ?? []) accountTypeMap[acc.id] = acc.type
 
   for (const snap of snapshots ?? []) {
     if (!includeIds.has(snap.account_id)) continue
     const month = snap.snapshotted_at.slice(0, 7)
-    const bal = Number(snap.balance)
-    const type = accountTypeMap[snap.account_id]
-    byMonth[month] = (byMonth[month] ?? 0) + bal
     if (!accountByMonth[snap.account_id]) accountByMonth[snap.account_id] = {}
-    accountByMonth[snap.account_id][month] = bal
-    if (type) {
-      if (!typeByMonth[type]) typeByMonth[type] = {}
-      typeByMonth[type][month] = (typeByMonth[type][month] ?? 0) + bal
+    accountByMonth[snap.account_id][month] = Number(snap.balance)
+  }
+
+  // Derive byMonth and typeByMonth from the already-deduplicated accountByMonth so that
+  // multiple snapshots for the same account in the same month are never double-counted.
+  const byMonth: Record<string, number> = {}
+  const typeByMonth: Record<string, Record<string, number>> = {}
+  for (const [accId, months] of Object.entries(accountByMonth)) {
+    const type = accountTypeMap[accId]
+    for (const [month, bal] of Object.entries(months)) {
+      byMonth[month] = (byMonth[month] ?? 0) + bal
+      if (type) {
+        if (!typeByMonth[type]) typeByMonth[type] = {}
+        typeByMonth[type][month] = (typeByMonth[type][month] ?? 0) + bal
+      }
     }
   }
 
