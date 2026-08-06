@@ -5,6 +5,7 @@ import { Separator } from '@/components/ui/separator'
 import AddAccountForm from './AddAccountForm'
 import AccountRow from './AccountRow'
 import Trading212Section from './Trading212Section'
+import RecommendationsWidget from '../dashboard/RecommendationsWidget'
 
 const TYPE_LABELS: Record<string, string> = {
   current: 'Current accounts', savings: 'Savings', isa: 'ISAs',
@@ -95,6 +96,11 @@ export default async function AccountsPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* AI recommendations */}
+      <div className="mb-6">
+        <RecommendationsWidget />
+      </div>
 
       {/* Add manual account */}
       <div className="space-y-4">

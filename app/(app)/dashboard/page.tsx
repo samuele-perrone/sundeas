@@ -11,7 +11,6 @@ import Link from 'next/link'
 import { ArrowRight, TrendingUp } from 'lucide-react'
 import NetWorthChart, { type AccountSeries } from './NetWorthChart'
 import SnapshotButton from './SnapshotButton'
-import RecommendationsWidget from './RecommendationsWidget'
 
 const TYPE_LABELS: Record<string, string> = {
   current: 'Current', savings: 'Savings', isa: 'ISAs', pension: 'Pensions',
@@ -519,8 +518,6 @@ export default async function DashboardPage() {
           )}
         </CardContent>
       </Card>
-      {/* AI recommendations */}
-      <RecommendationsWidget />
     </div>
   )
 }
