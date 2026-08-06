@@ -28,6 +28,56 @@ async function fetchT212Portfolio(apiKey: string, mode: string): Promise<T212Pos
   return data
 }
 
+type MarketQuote = {
+  symbol: string
+  name: string
+  price: number
+  change: number
+  changePct: number
+  fiftyTwoWeekLow: number
+  fiftyTwoWeekHigh: number
+  analystRating?: string
+}
+
+const INDICES = ['^FTSE', '^GSPC', '^NDX', '^FTMC']
+const INDEX_LABELS: Record<string, string> = {
+  '^FTSE': 'FTSE 100',
+  '^GSPC': 'S&P 500',
+  '^NDX': 'Nasdaq 100',
+  '^FTMC': 'FTSE 250',
+}
+
+async function fetchYahooQuotes(symbols: string[]): Promise<MarketQuote[]> {
+  if (!symbols.length) return []
+  const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols.join(',')}&lang=en-US&region=GB`
+  try {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      cache: 'no-store',
+    })
+    if (!res.ok) return []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = await res.json() as any
+    return (data?.quoteResponse?.result ?? []).map((q: Record<string, unknown>) => ({
+      symbol: q.symbol as string,
+      name: (q.longName ?? q.shortName ?? q.symbol) as string,
+      price: q.regularMarketPrice as number,
+      change: q.regularMarketChange as number,
+      changePct: q.regularMarketChangePercent as number,
+      fiftyTwoWeekLow: q.fiftyTwoWeekLow as number,
+      fiftyTwoWeekHigh: q.fiftyTwoWeekHigh as number,
+      analystRating: q.averageAnalystRating as string | undefined,
+    }))
+  } catch {
+    return []
+  }
+}
+
+function t212ToYahoo(ticker: string): string {
+  // T212 tickers: strip exchange suffix (_EQ, _US, _UK, etc.)
+  return ticker.replace(/_(EQ|US|UK|DE|FR|NL|IT|ES|AU|CA)$/, '')
+}
+
 async function fetchT212Cash(apiKey: string, mode: string) {
   const base = mode === 'demo' ? DEMO_BASE : LIVE_BASE
   const res = await fetch(`${base}/equity/account/cash`, {
@@ -102,6 +152,33 @@ export async function GET(req: NextRequest) {
         .eq('provider', 'trading212')
         .single()
 
+      // Fetch market data (indices always, holding quotes if T212 connected)
+      const holdingTickers = t212conn?.api_key
+        ? (await fetchT212Portfolio(t212conn.api_key, t212conn.institution_id ?? 'live'))
+            .sort((a, b) => Math.abs(b.ppl) - Math.abs(a.ppl))
+            .slice(0, 10)
+            .map(p => t212ToYahoo(p.ticker))
+        : []
+
+      const [indiceQuotes, holdingQuotes] = await Promise.all([
+        fetchYahooQuotes(INDICES),
+        holdingTickers.length ? fetchYahooQuotes(holdingTickers) : Promise.resolve([]),
+      ])
+
+      const fmt = (n: number) => n >= 0 ? `+${n.toFixed(2)}%` : `${n.toFixed(2)}%`
+
+      const indicesSection = indiceQuotes.length
+        ? 'Market indices today:\n' + indiceQuotes.map(q =>
+            `  ${INDEX_LABELS[q.symbol] ?? q.symbol}: ${q.price.toLocaleString('en-GB', { maximumFractionDigits: 0 })} (${fmt(q.changePct)}) | 52w range ${q.fiftyTwoWeekLow.toLocaleString()}–${q.fiftyTwoWeekHigh.toLocaleString()}`
+          ).join('\n')
+        : ''
+
+      const holdingsMarketSection = holdingQuotes.length
+        ? 'Current market data for portfolio holdings:\n' + holdingQuotes.map(q =>
+            `  ${q.name} (${q.symbol}): £${q.price.toFixed(2)} (${fmt(q.changePct)})${q.analystRating ? ` | Analyst: ${q.analystRating}` : ''} | 52w ${q.fiftyTwoWeekLow.toFixed(2)}–${q.fiftyTwoWeekHigh.toFixed(2)}`
+          ).join('\n')
+        : ''
+
       let portfolioSection = ''
       let t212Cash = null
       let positions: T212Position[] = []
@@ -157,6 +234,8 @@ Net worth (included accounts): £${netWorth.toLocaleString('en-GB', { minimumFra
 Accounts:
 ${accountsSummary}
 ${portfolioSection ? `\n${portfolioSection}` : '\nNo investment portfolio connected.'}
+${indicesSection ? `\n${indicesSection}` : ''}
+${holdingsMarketSection ? `\n${holdingsMarketSection}` : ''}
 
 Retirement goal: ${goalSummary}
 ${chatContext ? `\nRECENT ADVISOR CONVERSATIONS (last 7 days — use these to tailor recommendations to topics the user has been exploring):\n${chatContext}\n` : ''}
@@ -175,7 +254,9 @@ Provide exactly 4 recommendations in JSON:
 Rules:
 - Reference actual account names, balances, and percentages from the data
 - If recent advisor conversations exist, prioritise topics the user has been asking about and build on that context
-- If T212 is connected, comment on portfolio concentration, top winners/losers, and cash allocation
+- Use today's market data (indices, % moves, 52-week ranges, analyst ratings) to make recommendations timely and market-aware
+- If T212 is connected, reference specific holdings vs their 52-week range and analyst ratings where available
+- Comment on portfolio concentration, top winners/losers, and cash vs invested ratio
 - If no T212, recommend considering investment accounts if appropriate
 - Compare ISA/pension contributions to general savings
 - Be educational and specific — no generic advice
