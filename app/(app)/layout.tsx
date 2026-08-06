@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import SignOutButton from '@/app/components/SignOutButton'
 import AppNav from '@/app/components/AppNav'
+import RetirementWidget from '@/app/components/RetirementWidget'
 import { Providers } from '@/app/components/Providers'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -13,11 +14,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen flex bg-background">
       <aside
-        className="w-64 shrink-0 flex flex-col bg-sidebar"
+        className="w-64 shrink-0 flex flex-col bg-sidebar h-screen sticky top-0 overflow-hidden"
         aria-label="Main navigation"
       >
         {/* Logo */}
-        <div className="px-5 py-6">
+        <div className="px-5 py-6 shrink-0">
           <Link
             href="/dashboard"
             className="flex items-baseline gap-0.5 w-fit focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 rounded"
@@ -27,14 +28,22 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </Link>
         </div>
 
-        <AppNav />
+        {/* Nav scrolls if items overflow */}
+        <div className="flex-1 overflow-y-auto">
+          <AppNav />
+        </div>
 
-        {/* Footer */}
-        <div className="mt-auto px-3 py-4 border-t border-white/10">
-          <p className="text-xs text-slate-400 px-3 py-1 truncate" title={user.email ?? ''}>
-            {user.email}
-          </p>
-          <SignOutButton />
+        {/* Widget + footer always visible at bottom */}
+        <div className="shrink-0">
+          <div className="px-3 pb-3">
+            <RetirementWidget />
+          </div>
+          <div className="px-3 py-4 border-t border-white/10">
+            <p className="text-xs text-slate-400 px-3 py-1 truncate" title={user.email ?? ''}>
+              {user.email}
+            </p>
+            <SignOutButton />
+          </div>
         </div>
       </aside>
 

@@ -41,6 +41,7 @@ type Account = {
   notes: string | null
   is_manual: boolean
   include_in_net_worth: boolean
+  connection_id: string | null
 }
 
 function rateLabel(type: string): string {
@@ -56,6 +57,7 @@ export default function AccountRow({ acc }: { acc: Account }) {
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [recurringCount, setRecurringCount] = useState<number | null>(null)
 
   const [form, setForm] = useState({
     institution_name: acc.institution_name ?? '',
@@ -104,6 +106,16 @@ export default function AccountRow({ acc }: { acc: Account }) {
     router.refresh()
   }
 
+  const openDelete = async () => {
+    setDeleteOpen(true)
+    const supabase = createClient()
+    const { count } = await supabase
+      .from('recurring_payments')
+      .select('id', { count: 'exact', head: true })
+      .or(`account_id.eq.${acc.id},to_account_id.eq.${acc.id}`)
+    setRecurringCount(count ?? 0)
+  }
+
   const handleDelete = async () => {
     setDeleting(true)
     const supabase = createClient()
@@ -147,10 +159,12 @@ export default function AccountRow({ acc }: { acc: Account }) {
               {acc.is_manual && (
                 <Badge variant="secondary" className="text-[10px]">Manual</Badge>
               )}
-              {acc.interest_rate !== null && acc.rate_source === 'ai' && (
-                <Badge variant="outline" className="text-[10px] border-indigo-200 text-indigo-500">AI</Badge>
-              )}
             </div>
+            {acc.interest_rate !== null && acc.balance !== null && acc.balance > 0 && (
+              <p className="text-[11px] text-emerald-600 tabular-nums mt-0.5">
+                +{formatGBP(Math.round((acc.balance * acc.interest_rate / 100) / 12 * 100) / 100)}/mo interest
+              </p>
+            )}
           </div>
           <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <Button
@@ -166,7 +180,7 @@ export default function AccountRow({ acc }: { acc: Account }) {
               variant="ghost"
               size="icon"
               aria-label={`Delete ${acc.name}`}
-              onClick={() => setDeleteOpen(true)}
+              onClick={openDelete}
               className="h-8 w-8 text-muted-foreground hover:text-destructive"
             >
               <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
@@ -294,6 +308,11 @@ export default function AccountRow({ acc }: { acc: Account }) {
             <AlertDialogDescription>
               This will permanently remove the account and all its balance history. This cannot be undone.
             </AlertDialogDescription>
+            {recurringCount !== null && recurringCount > 0 && (
+              <p className="text-sm font-medium text-destructive">
+                ⚠️ This account has {recurringCount} recurring budget {recurringCount === 1 ? 'entry' : 'entries'} (income, expenses, or transfers) that will also be permanently deleted.
+              </p>
+            )}
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
