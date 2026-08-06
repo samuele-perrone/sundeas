@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata: Metadata = {
-  title: 'Sundeas — Retire at 57',
+  title: 'Sundeas',
   description: 'Personal wealth management and retirement planning',
   icons: {
     icon: '/favicon-32x32.png',

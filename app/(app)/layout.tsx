@@ -5,6 +5,20 @@ import SignOutButton from '@/app/components/SignOutButton'
 import AppNav from '@/app/components/AppNav'
 import RetirementWidget from '@/app/components/RetirementWidget'
 import { Providers } from '@/app/components/Providers'
+import type { Metadata } from 'next'
+
+export async function generateMetadata(): Promise<Metadata> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { title: 'Sundeas' }
+  const { data: goal } = await supabase
+    .from('goals')
+    .select('target_retirement_age')
+    .eq('user_id', user.id)
+    .single()
+  const age = goal?.target_retirement_age
+  return { title: age ? `Sundeas — Retire at ${age}` : 'Sundeas' }
+}
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
