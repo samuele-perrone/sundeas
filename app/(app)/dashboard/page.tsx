@@ -8,7 +8,7 @@ import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import Link from 'next/link'
-import { ArrowRight, TrendingUp } from 'lucide-react'
+import { ArrowRight, TrendingUp, PiggyBank, Target, LineChart, MessageCircle, ChevronRight } from 'lucide-react'
 import NetWorthChart, { type AccountSeries } from './NetWorthChart'
 import SnapshotButton from './SnapshotButton'
 
@@ -357,6 +357,70 @@ export default async function DashboardPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Getting started — shown when no accounts exist */}
+      {(accounts ?? []).length === 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold">Get started in 4 steps</CardTitle>
+            <p className="text-sm text-muted-foreground mt-0.5">Sundeas helps you track your wealth, plan for retirement, and get AI-powered insights — all in one place.</p>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y">
+              {[
+                {
+                  step: '1',
+                  icon: PiggyBank,
+                  title: 'Add your accounts',
+                  description: 'Add bank accounts, ISAs, pensions, investments, and mortgages. Enter balances manually — no bank login required.',
+                  href: '/accounts',
+                  cta: 'Go to Accounts',
+                },
+                {
+                  step: '2',
+                  icon: Target,
+                  title: 'Set your retirement goal',
+                  description: 'Tell Sundeas when you want to retire and how much you need. The dashboard will project whether you\'re on track.',
+                  href: '/plan',
+                  cta: 'Set a goal',
+                },
+                {
+                  step: '3',
+                  icon: LineChart,
+                  title: 'Take a monthly snapshot',
+                  description: 'Once your accounts are added, hit "Snapshot" each month. Over time this builds your net worth history and projection.',
+                  href: '/accounts',
+                  cta: 'Add accounts first',
+                },
+                {
+                  step: '4',
+                  icon: MessageCircle,
+                  title: 'Ask the AI advisor',
+                  description: 'Chat with your personal finance advisor to explore ISA allowances, pension contributions, investment ideas, and more.',
+                  href: '/advisor',
+                  cta: 'Open advisor',
+                },
+              ].map(({ step, icon: Icon, title, description, href, cta }) => (
+                <Link key={step} href={href} className="flex items-start gap-4 px-6 py-5 hover:bg-muted/40 transition-colors group">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold mt-0.5">
+                    {step}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <Icon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      <p className="text-sm font-semibold">{title}</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed">{description}</p>
+                  </div>
+                  <div className="flex items-center gap-1 text-xs text-primary shrink-0 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {cta} <ChevronRight className="w-3 h-3" />
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Retirement progress */}
