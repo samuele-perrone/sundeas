@@ -61,6 +61,11 @@ export default async function AccountsPage() {
         </div>
       </div>
 
+      {/* AI recommendations */}
+      <div className="mb-6">
+        <RecommendationsWidget />
+      </div>
+
       {/* Trading 212 */}
       <Trading212Section connection={t212Connection} account={t212Account} />
 
@@ -96,11 +101,6 @@ export default async function AccountsPage() {
           </CardContent>
         </Card>
       )}
-
-      {/* AI recommendations */}
-      <div className="mb-6">
-        <RecommendationsWidget />
-      </div>
 
       {/* Add manual account */}
       <div className="space-y-4">
