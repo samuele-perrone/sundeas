@@ -146,3 +146,27 @@ describe('formatGBP', () => {
     expect(formatGBP(0)).toBe('£0.00')
   })
 })
+
+import { toMonthlyAmount } from '../finance'
+
+describe('toMonthlyAmount', () => {
+  it('returns amount unchanged for monthly frequency', () => {
+    expect(toMonthlyAmount(1000, 'monthly')).toBe(1000)
+  })
+
+  it('converts weekly amount to monthly (×52/12)', () => {
+    expect(toMonthlyAmount(100, 'weekly')).toBeCloseTo((100 * 52) / 12, 5)
+  })
+
+  it('converts annual amount to monthly (÷12)', () => {
+    expect(toMonthlyAmount(12000, 'annual')).toBeCloseTo(1000, 5)
+  })
+
+  it('returns 0 for once (one-off) frequency', () => {
+    expect(toMonthlyAmount(5000, 'once')).toBe(0)
+  })
+
+  it('treats unknown frequency as monthly (passthrough)', () => {
+    expect(toMonthlyAmount(250, 'quarterly')).toBe(250)
+  })
+})

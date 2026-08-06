@@ -22,16 +22,24 @@ const CAT_LABEL: Record<string, string> = {
 }
 
 async function buildSystemPrompt(supabase: Awaited<ReturnType<typeof createClient>>, userId: string): Promise<string> {
+  const sixMonthsAgo = new Date()
+  sixMonthsAgo.setUTCMonth(sixMonthsAgo.getUTCMonth() - 6)
+
   const [
     { data: accounts },
     { data: profile },
     { data: goal },
     { data: recurring },
+    { data: rawSnapshots },
   ] = await Promise.all([
     supabase.from('accounts').select('*').eq('user_id', userId),
     supabase.from('profiles').select('*').eq('id', userId).single(),
     supabase.from('goals').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(1).single(),
     supabase.from('recurring_payments').select('*').eq('user_id', userId),
+    supabase.from('balance_snapshots')
+      .select('account_id, balance, snapshotted_at')
+      .gte('snapshotted_at', sixMonthsAgo.toISOString())
+      .order('snapshotted_at', { ascending: false }),
   ])
 
   const all = accounts ?? []
@@ -60,6 +68,49 @@ async function buildSystemPrompt(supabase: Awaited<ReturnType<typeof createClien
     })
     return `  ${label}:\n${lines.join('\n')}`
   }).join('\n')
+
+  // Balance history — deduplicate to one snapshot per account per month (newest wins)
+  const snapByAccMonth = new Map<string, { balance: number; label: string; month: string }>()
+  for (const snap of (rawSnapshots ?? [])) {
+    const d = new Date(snap.snapshotted_at)
+    const month = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
+    const key = `${snap.account_id}::${month}`
+    if (!snapByAccMonth.has(key)) {
+      const label = d.toLocaleString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' })
+      snapByAccMonth.set(key, { balance: snap.balance, label, month })
+    }
+  }
+
+  // Per-account history lines (included accounts only)
+  const includedAccounts = all.filter(a => a.include_in_net_worth !== false)
+  const accountHistoryLines = includedAccounts.flatMap(a => {
+    const history: { month: string; label: string; balance: number }[] = []
+    for (const [key, val] of snapByAccMonth) {
+      if (key.startsWith(`${a.id}::`)) history.push({ month: val.month, label: val.label, balance: val.balance })
+    }
+    if (!history.length) return []
+    history.sort((x, y) => y.month.localeCompare(x.month))
+    const name = a.institution_name ? `${a.institution_name} — ${a.name}` : a.name
+    const points = history.slice(0, 6).map(h => `${formatGBP(h.balance)} (${h.label})`).join(' → ')
+    return [`  ${name}: ${points}`]
+  })
+
+  // Net worth by month across included accounts
+  const nwByMonth = new Map<string, { label: string; total: number }>()
+  for (const [key, val] of snapByAccMonth) {
+    const [accId, month] = key.split('::')
+    const acc = all.find(a => a.id === accId)
+    if (!acc || acc.include_in_net_worth === false) continue
+    if (!nwByMonth.has(month)) nwByMonth.set(month, { label: val.label, total: 0 })
+    nwByMonth.get(month)!.total += val.balance
+  }
+  const sortedNwMonths = [...nwByMonth.entries()].sort((a, b) => b[0].localeCompare(a[0])).slice(0, 6)
+  const nwHistoryLines = sortedNwMonths.map(([, { label, total }], i) => {
+    const prev = sortedNwMonths[i + 1]
+    const change = prev ? total - prev[1].total : null
+    const changeStr = change !== null ? ` (${change >= 0 ? '+' : ''}${formatGBP(change)} vs prior month)` : ''
+    return `  ${label}: ${formatGBP(total)}${changeStr}`
+  })
 
   // Recurring payments
   const allRecurring = recurring ?? []
@@ -116,6 +167,12 @@ NET WORTH: ${formatGBP(netWorth)}
 ACCOUNTS:
 ${accountLines || '  (no accounts added yet)'}
 
+BALANCE HISTORY (monthly snapshots, newest → oldest — use these to calculate gains and changes over time):
+${accountHistoryLines.length ? accountHistoryLines.join('\n') : '  (no snapshots recorded yet — user has not taken any snapshots)'}
+
+NET WORTH BY MONTH:
+${nwHistoryLines.length ? nwHistoryLines.join('\n') : '  (no snapshot history yet)'}
+
 RETIREMENT GOAL:
 ${targetLumpSum ? `  Target lump sum: ${formatGBP(targetLumpSum)}` : '  No target set yet'}
 ${goal?.target_monthly_income ? `  Target monthly income in retirement: ${formatGBP(goal.target_monthly_income)}` : ''}
@@ -167,8 +224,8 @@ export async function POST(req: NextRequest) {
   const systemPrompt = await buildSystemPrompt(supabase, user.id)
 
   const stream = anthropic.messages.stream({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 1500,
+    model: 'claude-sonnet-4-6',
+    max_tokens: 2048,
     system: systemPrompt,
     messages,
   })

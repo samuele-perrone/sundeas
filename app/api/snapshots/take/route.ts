@@ -6,7 +6,7 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { date } = await req.json().catch(() => ({}))
+  const { date, balances } = await req.json().catch(() => ({}))
   const snapshotted_at = date ? new Date(date).toISOString() : new Date().toISOString()
 
   const { data: accounts, error } = await supabase
@@ -32,9 +32,11 @@ export async function POST(req: NextRequest) {
     .gte('snapshotted_at', monthStart.toISOString())
     .lt('snapshotted_at', monthEnd.toISOString())
 
+  // Use caller-supplied balances when provided (historical entry), otherwise current balance
+  const customBalances = balances as Record<string, number> | undefined
   const rows = accounts.map(a => ({
     account_id: a.id,
-    balance: a.balance,
+    balance: customBalances?.[a.id] !== undefined ? customBalances[a.id] : a.balance,
     snapshotted_at,
   }))
 

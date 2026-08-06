@@ -50,6 +50,7 @@ export function calcRequiredMonthlySaving(
 export function toMonthlyAmount(amount: number, frequency: string): number {
   if (frequency === 'weekly') return (amount * 52) / 12
   if (frequency === 'annual') return amount / 12
+  if (frequency === 'once') return 0 // one-off payments don't contribute to monthly totals
   return amount // monthly
 }
 
