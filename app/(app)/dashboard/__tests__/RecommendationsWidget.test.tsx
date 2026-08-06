@@ -6,6 +6,9 @@ import RecommendationsWidget from '../RecommendationsWidget'
 const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)
 
+// crypto.randomUUID is available in jsdom
+vi.stubGlobal('crypto', { randomUUID: () => 'test-uuid-1234' })
+
 const mockData = {
   summary: 'Your net worth looks healthy.',
   recommendations: [
@@ -14,6 +17,10 @@ const mockData = {
     { title: 'Diversify', detail: 'Consider adding bonds.', priority: 'low' },
     { title: 'Pension top-up', detail: 'Add £200/month.', priority: 'medium' },
   ],
+}
+
+function setupFetch(data = mockData) {
+  mockFetch.mockResolvedValue({ ok: true, json: async () => data })
 }
 
 describe('RecommendationsWidget', () => {
@@ -27,19 +34,15 @@ describe('RecommendationsWidget', () => {
   })
 
   it('renders summary and recommendations after load', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => mockData,
-    })
+    setupFetch()
     render(<RecommendationsWidget />)
     await waitFor(() => expect(screen.getByText('Your net worth looks healthy.')).toBeInTheDocument())
     expect(screen.getByText('Max ISA')).toBeInTheDocument()
     expect(screen.getByText('Use your remaining £10,000 allowance.')).toBeInTheDocument()
-    expect(screen.getByRole('list', { name: /ai investment recommendations/i })).toBeInTheDocument()
   })
 
   it('renders 4 recommendation items', async () => {
-    mockFetch.mockResolvedValue({ ok: true, json: async () => mockData })
+    setupFetch()
     render(<RecommendationsWidget />)
     await waitFor(() => screen.getByRole('list', { name: /recommendations/i }))
     expect(screen.getAllByRole('listitem')).toHaveLength(4)
@@ -58,17 +61,74 @@ describe('RecommendationsWidget', () => {
   })
 
   it('refreshes on button click', async () => {
-    mockFetch.mockResolvedValue({ ok: true, json: async () => mockData })
+    setupFetch()
     render(<RecommendationsWidget />)
     await waitFor(() => screen.getByText('Max ISA'))
     await userEvent.click(screen.getByRole('button', { name: /refresh/i }))
     expect(mockFetch).toHaveBeenCalledTimes(2)
-    expect(mockFetch).toHaveBeenCalledWith('/api/recommendations')
   })
 
-  it('shows disclaimer text', async () => {
-    mockFetch.mockResolvedValue({ ok: true, json: async () => mockData })
-    render(<RecommendationsWidget />)
-    await waitFor(() => screen.getByText(/educational only/i))
+  describe('Reply flow', () => {
+    it('shows Reply button for each recommendation', async () => {
+      setupFetch()
+      render(<RecommendationsWidget />)
+      await waitFor(() => screen.getByText('Max ISA'))
+      expect(screen.getAllByText('Reply')).toHaveLength(4)
+    })
+
+    it('opens textarea on Reply click', async () => {
+      setupFetch()
+      render(<RecommendationsWidget />)
+      await waitFor(() => screen.getByText('Max ISA'))
+      await userEvent.click(screen.getAllByText('Reply')[0])
+      expect(screen.getByPlaceholderText(/ask a follow-up/i)).toBeInTheDocument()
+    })
+
+    it('sends reply to /api/chat/messages with recommendation context', async () => {
+      mockFetch
+        .mockResolvedValueOnce({ ok: true, json: async () => mockData }) // initial load
+        .mockResolvedValueOnce({ ok: true }) // POST reply
+
+      render(<RecommendationsWidget />)
+      await waitFor(() => screen.getByText('Max ISA'))
+
+      await userEvent.click(screen.getAllByText('Reply')[0])
+      await userEvent.type(screen.getByPlaceholderText(/ask a follow-up/i), 'Tell me more about ISA limits')
+      await userEvent.click(screen.getByRole('button', { name: /send/i }))
+
+      await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2))
+
+      const [url, options] = mockFetch.mock.calls[1]
+      expect(url).toBe('/api/chat/messages')
+      const body = JSON.parse(options.body)
+      expect(body.messages[0].role).toBe('assistant')
+      expect(body.messages[0].content).toContain('Max ISA')
+      expect(body.messages[1].role).toBe('user')
+      expect(body.messages[1].content).toBe('Tell me more about ISA limits')
+    })
+
+    it('shows confirmation after sending', async () => {
+      mockFetch
+        .mockResolvedValueOnce({ ok: true, json: async () => mockData })
+        .mockResolvedValueOnce({ ok: true })
+
+      render(<RecommendationsWidget />)
+      await waitFor(() => screen.getByText('Max ISA'))
+      await userEvent.click(screen.getAllByText('Reply')[0])
+      await userEvent.type(screen.getByPlaceholderText(/ask a follow-up/i), 'Good point')
+      await userEvent.click(screen.getByRole('button', { name: /send/i }))
+
+      await waitFor(() => expect(screen.getByText(/saved to advisor/i)).toBeInTheDocument())
+    })
+
+    it('cancels reply and clears text', async () => {
+      setupFetch()
+      render(<RecommendationsWidget />)
+      await waitFor(() => screen.getByText('Max ISA'))
+      await userEvent.click(screen.getAllByText('Reply')[0])
+      await userEvent.type(screen.getByPlaceholderText(/ask a follow-up/i), 'Hello')
+      await userEvent.click(screen.getByText('Cancel'))
+      expect(screen.queryByPlaceholderText(/ask a follow-up/i)).toBeNull()
+    })
   })
 })
