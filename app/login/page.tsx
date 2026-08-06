@@ -18,17 +18,31 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4 gap-6">
       <Card className="w-full max-w-sm shadow-md">
         <CardHeader className="pb-2">
-          <div className="flex items-baseline gap-0.5 mb-1">
+          <div className="flex items-center gap-2 mb-1">
+            <svg viewBox="0 0 100 100" className="w-6 h-6 shrink-0" aria-hidden="true">
+              <rect width="100" height="100" rx="22" fill="#0f172a"/>
+              <g transform="translate(50,52)">
+                <path d="M-22 4 A22 22 0 0 1 22 4 Z" fill="white"/>
+                <g stroke="white" strokeWidth="3" strokeLinecap="round" fill="none">
+                  <line x1="0" y1="-34" x2="0" y2="-26"/>
+                  <line x1="-24" y1="-24" x2="-19" y2="-18"/>
+                  <line x1="24" y1="-24" x2="19" y2="-18"/>
+                  <line x1="-30" y1="10" x2="30" y2="10"/>
+                </g>
+              </g>
+            </svg>
             <span className="text-xl font-bold tracking-tight">Sundeas</span>
           </div>
           <CardTitle className="text-lg">Sign in</CardTitle>
-          <CardDescription>Sign in to your account.</CardDescription>
+          <CardDescription>
+            Sundeas is currently invite-only. If you have access, sign in below.
+          </CardDescription>
         </CardHeader>
 
-        <CardContent>
+        <CardContent className="space-y-4">
           <Button
             type="button"
             variant="outline"
@@ -44,9 +58,17 @@ export default function LoginPage() {
             </svg>
             {loading ? 'Redirecting…' : 'Continue with Google'}
           </Button>
+
+          <p className="text-xs text-center text-muted-foreground">
+            Don't have access?{' '}
+            <a href="mailto:hello@sundeas.com" className="underline hover:text-foreground">
+              Request an invite
+            </a>
+          </p>
         </CardContent>
       </Card>
-      <div className="flex gap-4 justify-center mt-6 text-xs text-muted-foreground">
+
+      <div className="flex gap-4 text-xs text-muted-foreground">
         <Link href="/privacy" className="hover:text-foreground">Privacy Policy</Link>
         <Link href="/terms" className="hover:text-foreground">Terms & Conditions</Link>
       </div>

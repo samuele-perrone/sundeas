@@ -25,6 +25,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  const allowlist = (process.env.ALLOWED_EMAILS ?? '').split(',').map(e => e.trim().toLowerCase())
+  if (allowlist.length > 0 && allowlist[0] !== '' && !allowlist.includes(user.email?.toLowerCase() ?? '')) {
+    redirect('/unauthorised')
+  }
+
   return (
     <div className="min-h-screen flex bg-background">
       <aside
