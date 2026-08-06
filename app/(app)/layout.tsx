@@ -25,10 +25,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const allowlist = (process.env.ALLOWED_EMAILS ?? '').split(',').map(e => e.trim().toLowerCase())
-  if (allowlist.length > 0 && allowlist[0] !== '' && !allowlist.includes(user.email?.toLowerCase() ?? '')) {
-    redirect('/unauthorised')
-  }
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role, approved')
+    .eq('id', user.id)
+    .single()
+
+  if (!profile?.approved) redirect('/unauthorised')
 
   return (
     <div className="min-h-screen flex bg-background">
@@ -60,7 +63,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
         {/* Nav scrolls if items overflow */}
         <div className="flex-1 overflow-y-auto">
-          <AppNav />
+          <AppNav role={profile.role} />
         </div>
 
         {/* Widget + footer always visible at bottom */}

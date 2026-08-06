@@ -6,6 +6,8 @@ create table if not exists public.profiles (
   display_name text,
   date_of_birth date,
   target_retirement_age integer default 57,
+  role text not null default 'user' check (role in ('user', 'superadmin')),
+  approved boolean not null default false,
   created_at timestamptz default now()
 );
 

@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Wallet, ArrowLeftRight, Target, MessageSquare, Settings } from 'lucide-react'
+import { LayoutDashboard, Wallet, ArrowLeftRight, Target, MessageSquare, Settings, ShieldCheck } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const NAV = [
@@ -13,12 +13,15 @@ const NAV = [
   { href: '/settings', label: 'My Account', icon: Settings },
 ]
 
-export default function AppNav() {
+export default function AppNav({ role }: { role?: string }) {
   const pathname = usePathname()
+  const nav = role === 'superadmin'
+    ? [...NAV, { href: '/admin', label: 'Admin', icon: ShieldCheck }]
+    : NAV
 
   return (
     <nav className="flex-1 px-3 py-2 flex flex-col gap-0.5" aria-label="App sections">
-      {NAV.map(({ href, label, icon: Icon }) => {
+      {nav.map(({ href, label, icon: Icon }) => {
         const active = pathname === href || pathname.startsWith(href + '/')
         return (
           <Link
