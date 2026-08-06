@@ -19,6 +19,7 @@ type RecurringPayment = {
   frequency: string
   type: string
   category: string | null
+  payment_date: string | null
 }
 
 type Account = { id: string; name: string; institution_name: string | null }
@@ -55,7 +56,7 @@ const CAT_LABEL: Record<string, string> = {
   childcare: 'Childcare', other: 'Other',
 }
 
-const FREQ_LABEL: Record<string, string> = { weekly: 'weekly', monthly: 'monthly', annual: 'annual' }
+const FREQ_LABEL: Record<string, string> = { weekly: 'weekly', monthly: 'monthly', annual: 'annual', once: 'one-off' }
 
 type ItemType = 'income' | 'expense' | 'transfer'
 
@@ -63,11 +64,13 @@ export default function RecurringManager({
   incomeItems,
   expenseItems,
   transferItems,
+  oneOffItems,
   accounts,
 }: {
   incomeItems: RecurringPayment[]
   expenseItems: RecurringPayment[]
   transferItems: RecurringPayment[]
+  oneOffItems: RecurringPayment[]
   accounts: Account[]
 }) {
   const router = useRouter()
@@ -82,8 +85,9 @@ export default function RecurringManager({
   const [fName, setFName] = useState('')
   const [fAmount, setFAmount] = useState('')
   const [fFreq, setFFreq] = useState('monthly')
+  const [fPaymentDate, setFPaymentDate] = useState('')
 
-  const openAdd = (type: ItemType) => {
+  const openAdd = (type: ItemType, once = false) => {
     setEditing(null)
     setFType(type)
     setFCategory('')
@@ -91,7 +95,8 @@ export default function RecurringManager({
     setFToAccountId(accounts[1]?.id ?? accounts[0]?.id ?? '')
     setFName('')
     setFAmount('')
-    setFFreq('monthly')
+    setFFreq(once ? 'once' : 'monthly')
+    setFPaymentDate('')
     setOpen(true)
   }
 
@@ -104,6 +109,7 @@ export default function RecurringManager({
     setFName(item.name)
     setFAmount(String(item.amount))
     setFFreq(item.frequency)
+    setFPaymentDate(item.payment_date ? item.payment_date.slice(0, 7) : '')
     setOpen(true)
   }
 
@@ -120,6 +126,7 @@ export default function RecurringManager({
         category: fType === 'transfer' ? null : (fCategory || null),
         account_id: fAccountId,
         to_account_id: fType === 'transfer' ? fToAccountId : null,
+        payment_date: fFreq === 'once' ? (fPaymentDate ? `${fPaymentDate}-01` : null) : null,
       }
       const url = editing ? `/api/recurring/${editing.id}` : '/api/recurring'
       const method = editing ? 'PATCH' : 'POST'
@@ -157,10 +164,13 @@ export default function RecurringManager({
             )}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {formatGBP(item.amount)} · {FREQ_LABEL[item.frequency] ?? item.frequency}
-            {item.frequency !== 'monthly' && (
-              <span className="opacity-60"> ({formatGBP(monthly)}/mo)</span>
-            )}
+            {formatGBP(item.amount)}
+            {item.frequency === 'once'
+              ? item.payment_date
+                ? ` · ${new Date(`${item.payment_date}T12:00:00`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}`
+                : ' · one-off'
+              : ` · ${FREQ_LABEL[item.frequency] ?? item.frequency}${item.frequency !== 'monthly' ? ` (${formatGBP(monthly)}/mo)` : ''}`
+            }
             {isTransfer && item.to_account_id ? (
               <span className="opacity-70">
                 {' · '}{accountLabel(item.account_id)}
@@ -207,7 +217,7 @@ export default function RecurringManager({
   ]
 
   const cats = fType === 'income' ? INCOME_CATS : EXPENSE_CATS
-  const canSave = !saving && !!fName && !!fAmount && !!fAccountId && (fType !== 'transfer' || !!fToAccountId)
+  const canSave = !saving && !!fName && !!fAmount && !!fAccountId && (fType !== 'transfer' || !!fToAccountId) && (fFreq !== 'once' || !!fPaymentDate)
 
   return (
     <div className="space-y-6">
@@ -262,6 +272,36 @@ export default function RecurringManager({
 
       <Separator />
 
+      {/* One-off payments */}
+      <section aria-label="One-off payments">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-base leading-none">📅</span>
+            <h2 className="text-sm font-semibold">One-off payments</h2>
+            <span className="text-xs text-muted-foreground">(not included in monthly totals)</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={() => openAdd('income', true)} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-emerald-600 transition-colors">
+              <Plus className="w-3.5 h-3.5" aria-hidden="true" />Money in
+            </button>
+            <button type="button" onClick={() => openAdd('expense', true)} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition-colors">
+              <Plus className="w-3.5 h-3.5" aria-hidden="true" />Money out
+            </button>
+          </div>
+        </div>
+        {oneOffItems.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-1">No one-off payments yet — add a big expense or unexpected income for a specific date.</p>
+        ) : (
+          <ul className="divide-y divide-border" aria-label="One-off payments">
+            {oneOffItems
+              .sort((a, b) => (a.payment_date ?? '').localeCompare(b.payment_date ?? ''))
+              .map(renderItem)}
+          </ul>
+        )}
+      </section>
+
+      <Separator />
+
       {/* Transfers */}
       <section aria-label="Transfers">
         <div className="flex items-center justify-between mb-3">
@@ -287,7 +327,9 @@ export default function RecurringManager({
           <DialogHeader>
             <DialogTitle>
               {editing ? 'Edit' : 'Add'}{' '}
-              {fType === 'income' ? 'income source' : fType === 'expense' ? 'recurring expense' : 'recurring transfer'}
+              {fFreq === 'once'
+                ? (fType === 'income' ? 'one-off income' : 'one-off expense')
+                : fType === 'income' ? 'income source' : fType === 'expense' ? 'recurring expense' : 'recurring transfer'}
             </DialogTitle>
           </DialogHeader>
 
@@ -410,10 +452,25 @@ export default function RecurringManager({
                       <SelectItem value="weekly">Weekly</SelectItem>
                       <SelectItem value="monthly">Monthly</SelectItem>
                       <SelectItem value="annual">Annual</SelectItem>
+                      {fType !== 'transfer' && <SelectItem value="once">One-off</SelectItem>}
                     </SelectContent>
                   </Select>
                 </div>
               </div>
+
+              {fFreq === 'once' && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="rec-date">Month</Label>
+                  <Input
+                    id="rec-date"
+                    type="month"
+                    required
+                    value={fPaymentDate}
+                    onChange={e => setFPaymentDate(e.target.value)}
+                    className="w-48"
+                  />
+                </div>
+              )}
             </div>
           )}
 

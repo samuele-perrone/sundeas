@@ -41,12 +41,15 @@ export default async function BudgetPage() {
   ])
 
   const all = recurring ?? []
-  const incomeItems = all.filter(r => r.type === 'income')
-  const expenseItems = all.filter(r => r.type === 'expense')
+  const oneOffItems = all.filter(r => r.frequency === 'once')
+  const incomeItems = all.filter(r => r.type === 'income' && r.frequency !== 'once')
+  const expenseItems = all.filter(r => r.type === 'expense' && r.frequency !== 'once')
   const transferItems = all.filter(r => r.type === 'transfer')
   const monthlyIncome = incomeItems.reduce((s, r) => s + toMonthlyAmount(r.amount, r.frequency), 0)
   const monthlyExpenses = expenseItems.reduce((s, r) => s + toMonthlyAmount(r.amount, r.frequency), 0)
+  const monthlyTransfers = transferItems.reduce((s, r) => s + toMonthlyAmount(r.amount, r.frequency), 0)
   const monthlyNet = monthlyIncome - monthlyExpenses
+  const monthlyDisposable = monthlyNet - monthlyTransfers
 
   const txList = transactions ?? []
   const byCat = sumByCategory(txList)
@@ -61,7 +64,7 @@ export default async function BudgetPage() {
       </div>
 
       {/* Monthly summary */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardContent className="pt-5 pb-4">
             <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1.5">Monthly income</p>
@@ -82,6 +85,17 @@ export default async function BudgetPage() {
             </p>
           </CardContent>
         </Card>
+        <Card className="border-emerald-200 bg-emerald-50/50">
+          <CardContent className="pt-5 pb-4">
+            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1.5">Disposable</p>
+            <p className={`text-2xl font-bold tabular-nums ${monthlyDisposable >= 0 ? 'text-emerald-600' : 'text-destructive'}`}>
+              {monthlyDisposable >= 0 ? '+' : ''}{formatGBP(monthlyDisposable)}
+            </p>
+            {monthlyTransfers > 0 && (
+              <p className="text-[11px] text-muted-foreground mt-1">after {formatGBP(monthlyTransfers)} transfers</p>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Recurring payments — money in / money out */}
@@ -91,6 +105,7 @@ export default async function BudgetPage() {
             incomeItems={incomeItems}
             expenseItems={expenseItems}
             transferItems={transferItems}
+            oneOffItems={oneOffItems}
             accounts={accounts ?? []}
           />
         </CardContent>
