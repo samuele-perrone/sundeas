@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
@@ -45,6 +46,10 @@ export default function LoginPage() {
           </Button>
         </CardContent>
       </Card>
+      <div className="flex gap-4 justify-center mt-6 text-xs text-muted-foreground">
+        <Link href="/privacy" className="hover:text-foreground">Privacy Policy</Link>
+        <Link href="/terms" className="hover:text-foreground">Terms & Conditions</Link>
+      </div>
     </div>
   )
 }

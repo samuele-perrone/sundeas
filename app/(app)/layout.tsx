@@ -56,6 +56,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               {user.email}
             </p>
             <SignOutButton />
+            <div className="flex gap-3 px-3 pt-2">
+              <Link href="/privacy" className="text-[10px] text-slate-500 hover:text-slate-300">Privacy</Link>
+              <Link href="/terms" className="text-[10px] text-slate-500 hover:text-slate-300">Terms</Link>
+            </div>
           </div>
         </div>
       </aside>
