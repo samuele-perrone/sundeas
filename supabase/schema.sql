@@ -156,6 +156,7 @@ create policy "users see own digests" on public.digests for all using (auth.uid(
 alter table public.chat_messages enable row level security;
 create policy "users see own chat messages" on public.chat_messages for all using (auth.uid() = user_id);
 
+
 -- Auto-create profile on sign-up
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer as $$
