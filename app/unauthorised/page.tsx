@@ -16,7 +16,10 @@ export default function UnauthorisedPage() {
         <CardContent>
           <p className="text-sm text-muted-foreground">
             To request access, email{' '}
-            <a href="mailto:hello@sundeas.com" className="underline hover:text-foreground">
+            <a
+              href={`mailto:hello@sundeas.com?subject=${encodeURIComponent('Sundeas — Invite Request')}&body=${encodeURIComponent('Hi,\n\nI\'d love to get access to Sundeas.\n\nMy name: \nMy Google email: \n\nThanks!')}`}
+              className="underline hover:text-foreground"
+            >
               hello@sundeas.com
             </a>
           </p>

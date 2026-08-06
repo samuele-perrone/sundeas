@@ -61,7 +61,10 @@ export default function LoginPage() {
 
           <p className="text-xs text-center text-muted-foreground">
             Don't have access?{' '}
-            <a href="mailto:hello@sundeas.com" className="underline hover:text-foreground">
+            <a
+              href={`mailto:hello@sundeas.com?subject=${encodeURIComponent('Sundeas — Invite Request')}&body=${encodeURIComponent('Hi,\n\nI\'d love to get access to Sundeas.\n\nMy name: \nMy Google email: \n\nThanks!')}`}
+              className="underline hover:text-foreground"
+            >
               Request an invite
             </a>
           </p>
