@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import BackupSection from './BackupSection'
+import DeleteAccountSection from './DeleteAccountSection'
 
 export default async function SettingsPage() {
   const supabase = await createClient()
@@ -33,6 +34,10 @@ export default async function SettingsPage() {
         </div>
         <BackupSection />
       </div>
+
+      <Separator className="my-6" />
+
+      <DeleteAccountSection />
     </div>
   )
 }
