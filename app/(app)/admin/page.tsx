@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { ShieldCheck, ShieldOff, UserCheck, UserX, RefreshCw, UserPlus, Send } from 'lucide-react'
+import { ShieldCheck, ShieldOff, UserCheck, UserX, RefreshCw, UserPlus, Send, Mail } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -37,6 +37,7 @@ export default function AdminPage() {
   const [inviteError, setInviteError] = useState<string | null>(null)
   const [inviteSuccess, setInviteSuccess] = useState(false)
   const [resending, setResending] = useState<string | null>(null)
+  const [sendingDigest, setSendingDigest] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -66,6 +67,16 @@ export default function AdminPage() {
       setUsers(prev => prev.map(u => u.id === id ? { ...u, ...patch } : u))
     }
     setUpdating(null)
+  }
+
+  async function sendDigest(userId: string) {
+    setSendingDigest(userId)
+    await fetch('/api/admin/send-digest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    })
+    setSendingDigest(null)
   }
 
   async function resendInvite(email: string) {
@@ -174,6 +185,17 @@ export default function AdminPage() {
 
                     {!isSelf && (
                       <div className="flex items-center gap-2 shrink-0">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={sendingDigest === u.id}
+                          onClick={() => sendDigest(u.id)}
+                          title="Send investment digest email"
+                        >
+                          <Mail className="w-3.5 h-3.5 mr-1.5" />
+                          {sendingDigest === u.id ? 'Sending…' : 'Send digest'}
+                        </Button>
+
                         <Button
                           size="sm"
                           variant="outline"

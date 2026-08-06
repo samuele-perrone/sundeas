@@ -98,11 +98,12 @@ export async function GET(req: NextRequest) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://sundeas.com'
   const from = process.env.RESEND_FROM ?? 'Sundeas <digest@sundeas.com>'
 
-  // Get all approved users
-  const { data: profiles } = await admin
-    .from('profiles')
-    .select('id')
-    .eq('approved', true)
+  // Optional single-user mode (used by admin panel "Send digest" button)
+  const targetUserId = req.nextUrl.searchParams.get('userId')
+
+  const query = admin.from('profiles').select('id').eq('approved', true)
+  if (targetUserId) query.eq('id', targetUserId)
+  const { data: profiles } = await query
 
   if (!profiles?.length) return NextResponse.json({ sent: 0 })
 
