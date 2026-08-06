@@ -183,19 +183,21 @@ export default function AdminPage() {
                       </Badge>
                     </div>
 
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={sendingDigest === u.id}
+                        onClick={() => sendDigest(u.id)}
+                        title="Send investment digest email"
+                      >
+                        <Mail className="w-3.5 h-3.5 mr-1.5" />
+                        {sendingDigest === u.id ? 'Sending…' : 'Send digest'}
+                      </Button>
+                    </div>
+
                     {!isSelf && (
                       <div className="flex items-center gap-2 shrink-0">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={sendingDigest === u.id}
-                          onClick={() => sendDigest(u.id)}
-                          title="Send investment digest email"
-                        >
-                          <Mail className="w-3.5 h-3.5 mr-1.5" />
-                          {sendingDigest === u.id ? 'Sending…' : 'Send digest'}
-                        </Button>
-
                         <Button
                           size="sm"
                           variant="outline"
