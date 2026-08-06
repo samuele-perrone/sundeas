@@ -32,6 +32,28 @@ export async function GET() {
   return NextResponse.json(result)
 }
 
+export async function POST(req: NextRequest) {
+  if (!await requireSuperAdmin()) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const { email } = await req.json()
+  if (!email) return NextResponse.json({ error: 'Missing email' }, { status: 400 })
+
+  const admin = createAdminClient()
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://sundeas.com'
+
+  const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
+    redirectTo: `${appUrl}/api/auth/callback`,
+  })
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Auto-approve so they have access immediately
+  if (data.user) {
+    await admin.from('profiles').update({ approved: true }).eq('id', data.user.id)
+  }
+
+  return NextResponse.json({ ok: true })
+}
+
 export async function PATCH(req: NextRequest) {
   const caller = await requireSuperAdmin()
   if (!caller) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })

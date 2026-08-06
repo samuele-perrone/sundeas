@@ -1,9 +1,20 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
-import { ShieldCheck, ShieldOff, UserCheck, UserX, RefreshCw } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
+import { ShieldCheck, ShieldOff, UserCheck, UserX, RefreshCw, UserPlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+} from '@/components/ui/alert-dialog'
 
 type User = {
   id: string
@@ -15,9 +26,16 @@ type User = {
 
 export default function AdminPage() {
   const [users, setUsers] = useState<User[]>([])
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  const [inviteOpen, setInviteOpen] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviting, setInviting] = useState(false)
+  const [inviteError, setInviteError] = useState<string | null>(null)
+  const [inviteSuccess, setInviteSuccess] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -28,7 +46,10 @@ export default function AdminPage() {
     setLoading(false)
   }, [])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+    createClient().auth.getUser().then(({ data }) => setCurrentUserId(data.user?.id ?? null))
+  }, [load])
 
   async function update(id: string, patch: Partial<Pick<User, 'role' | 'approved'>>) {
     setUpdating(id)
@@ -46,6 +67,32 @@ export default function AdminPage() {
     setUpdating(null)
   }
 
+  async function handleInvite() {
+    setInviting(true)
+    setInviteError(null)
+    const res = await fetch('/api/admin/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: inviteEmail }),
+    })
+    if (!res.ok) {
+      const body = await res.json()
+      setInviteError(body.error ?? 'Invite failed')
+      setInviting(false)
+      return
+    }
+    setInviteSuccess(true)
+    setInviting(false)
+    await load()
+  }
+
+  function openInvite() {
+    setInviteOpen(true)
+    setInviteEmail('')
+    setInviteError(null)
+    setInviteSuccess(false)
+  }
+
   const sorted = [...users].sort((a, b) => {
     if (a.role === 'superadmin' && b.role !== 'superadmin') return -1
     if (b.role === 'superadmin' && a.role !== 'superadmin') return 1
@@ -61,10 +108,16 @@ export default function AdminPage() {
           <h1 className="text-2xl font-bold">User Management</h1>
           <p className="text-muted-foreground text-sm mt-1">Approve access and manage roles</p>
         </div>
-        <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-          <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={openInvite}>
+            <UserPlus className="w-4 h-4 mr-2" />
+            Add user
+          </Button>
+          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -85,57 +138,104 @@ export default function AdminPage() {
             <div className="p-8 text-center text-muted-foreground text-sm">No users found</div>
           ) : (
             <div className="divide-y">
-              {sorted.map(u => (
-                <div key={u.id} className="flex items-center gap-4 px-6 py-4">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{u.email}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Joined {new Date(u.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                    </p>
-                  </div>
+              {sorted.map(u => {
+                const isSelf = u.id === currentUserId
+                return (
+                  <div key={u.id} className="flex items-center gap-4 px-6 py-4">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        {u.email}
+                        {isSelf && <span className="ml-2 text-xs text-muted-foreground">(you)</span>}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Joined {new Date(u.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </p>
+                    </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Badge variant={u.role === 'superadmin' ? 'default' : 'secondary'}>
-                      {u.role === 'superadmin' ? 'SuperAdmin' : 'User'}
-                    </Badge>
-                    <Badge variant={u.approved ? 'outline' : 'destructive'} className="text-xs">
-                      {u.approved ? 'Approved' : 'Pending'}
-                    </Badge>
-                  </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Badge variant={u.role === 'superadmin' ? 'default' : 'secondary'}>
+                        {u.role === 'superadmin' ? 'SuperAdmin' : 'User'}
+                      </Badge>
+                      <Badge variant={u.approved ? 'outline' : 'destructive'} className="text-xs">
+                        {u.approved ? 'Approved' : 'Pending'}
+                      </Badge>
+                    </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Button
-                      size="sm"
-                      variant={u.approved ? 'outline' : 'default'}
-                      disabled={updating === u.id}
-                      onClick={() => update(u.id, { approved: !u.approved })}
-                      title={u.approved ? 'Revoke access' : 'Approve access'}
-                    >
-                      {u.approved
-                        ? <><UserX className="w-3.5 h-3.5 mr-1.5" />Revoke</>
-                        : <><UserCheck className="w-3.5 h-3.5 mr-1.5" />Approve</>
-                      }
-                    </Button>
+                    {!isSelf && (
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Button
+                          size="sm"
+                          variant={u.approved ? 'outline' : 'default'}
+                          disabled={updating === u.id}
+                          onClick={() => update(u.id, { approved: !u.approved })}
+                        >
+                          {u.approved
+                            ? <><UserX className="w-3.5 h-3.5 mr-1.5" />Revoke</>
+                            : <><UserCheck className="w-3.5 h-3.5 mr-1.5" />Approve</>
+                          }
+                        </Button>
 
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={updating === u.id}
-                      onClick={() => update(u.id, { role: u.role === 'superadmin' ? 'user' : 'superadmin' })}
-                      title={u.role === 'superadmin' ? 'Remove SuperAdmin' : 'Make SuperAdmin'}
-                    >
-                      {u.role === 'superadmin'
-                        ? <><ShieldOff className="w-3.5 h-3.5 mr-1.5" />Demote</>
-                        : <><ShieldCheck className="w-3.5 h-3.5 mr-1.5" />Promote</>
-                      }
-                    </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={updating === u.id}
+                          onClick={() => update(u.id, { role: u.role === 'superadmin' ? 'user' : 'superadmin' })}
+                        >
+                          {u.role === 'superadmin'
+                            ? <><ShieldOff className="w-3.5 h-3.5 mr-1.5" />Demote</>
+                            : <><ShieldCheck className="w-3.5 h-3.5 mr-1.5" />Promote</>
+                          }
+                        </Button>
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </CardContent>
       </Card>
+
+      {/* Invite dialog */}
+      <AlertDialog open={inviteOpen} onOpenChange={setInviteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Add user</AlertDialogTitle>
+            <AlertDialogDescription>
+              Enter their email address. They'll receive an invite link and be automatically approved.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          {inviteSuccess ? (
+            <div className="py-4 text-sm text-center text-green-600 font-medium">
+              Invite sent to {inviteEmail}
+            </div>
+          ) : (
+            <div className="py-2 space-y-2">
+              <Input
+                type="email"
+                value={inviteEmail}
+                onChange={e => setInviteEmail(e.target.value)}
+                placeholder="friend@example.com"
+                autoFocus
+                onKeyDown={e => e.key === 'Enter' && inviteEmail && !inviting && handleInvite()}
+              />
+              {inviteError && <p className="text-sm text-destructive">{inviteError}</p>}
+            </div>
+          )}
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={inviting} onClick={() => setInviteOpen(false)}>
+              {inviteSuccess ? 'Close' : 'Cancel'}
+            </AlertDialogCancel>
+            {!inviteSuccess && (
+              <Button disabled={!inviteEmail || inviting} onClick={handleInvite}>
+                {inviting ? 'Sending…' : 'Send invite'}
+              </Button>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
