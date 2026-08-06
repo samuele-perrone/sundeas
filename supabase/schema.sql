@@ -5,7 +5,7 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   display_name text,
   date_of_birth date,
-  target_retirement_age integer default 57,
+  target_retirement_age integer,
   role text not null default 'user' check (role in ('user', 'superadmin')),
   approved boolean not null default false,
   created_at timestamptz default now()
@@ -15,7 +15,7 @@ create table if not exists public.profiles (
 create table if not exists public.goals (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  target_retirement_age integer not null default 57,
+  target_retirement_age integer,
   target_monthly_income numeric(12,2),   -- desired monthly income in retirement (£)
   target_lump_sum numeric(12,2),         -- total pot target
   notes text,
