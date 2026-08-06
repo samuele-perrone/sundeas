@@ -21,8 +21,8 @@ export default function LoginPage() {
     <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4 gap-6">
       <Card className="w-full max-w-sm shadow-md">
         <CardHeader className="pb-2">
-          <div className="flex items-center gap-2 mb-1">
-            <svg viewBox="0 0 100 100" className="w-6 h-6 shrink-0" aria-hidden="true">
+          <div className="flex flex-col items-center gap-3 mb-2">
+            <svg viewBox="0 0 100 100" className="w-14 h-14 shrink-0" aria-hidden="true">
               <rect width="100" height="100" rx="22" fill="#0f172a"/>
               <g transform="translate(50,52)">
                 <path d="M-22 4 A22 22 0 0 1 22 4 Z" fill="white"/>
@@ -34,10 +34,10 @@ export default function LoginPage() {
                 </g>
               </g>
             </svg>
-            <span className="text-xl font-bold tracking-tight">Sundeas</span>
+            <span className="text-2xl font-bold tracking-tight">Sundeas</span>
           </div>
-          <CardTitle className="text-lg">Sign in</CardTitle>
-          <CardDescription>
+          <CardTitle className="text-lg text-center">Sign in</CardTitle>
+          <CardDescription className="text-center">
             Sundeas is currently invite-only. If you have access, sign in below.
           </CardDescription>
         </CardHeader>
