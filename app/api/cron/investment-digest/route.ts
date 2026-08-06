@@ -84,6 +84,16 @@ export async function GET(req: NextRequest) {
         .eq('user_id', profile.id)
         .single()
 
+      // Fetch recent advisor chat messages (last 7 days)
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+      const { data: recentChats } = await admin
+        .from('chat_messages')
+        .select('role, content, created_at')
+        .eq('user_id', profile.id)
+        .gte('created_at', sevenDaysAgo)
+        .order('created_at', { ascending: true })
+        .limit(30)
+
       // Fetch T212 connection if any
       const { data: t212conn } = await admin
         .from('connections')
@@ -135,6 +145,10 @@ ${topPositions}`
         ? `Retirement age: ${goal.target_retirement_age ?? 'not set'}, Monthly income target: £${goal.target_monthly_income ?? 'not set'}, Lump sum target: £${goal.target_lump_sum ?? 'not set'}`
         : 'No retirement goal set'
 
+      const chatContext = recentChats?.length
+        ? recentChats.map(m => `${m.role === 'user' ? 'User' : 'Advisor'}: ${m.content.slice(0, 300)}`).join('\n')
+        : null
+
       const prompt = `You are a UK personal finance education tool. Analyse the following financial snapshot for a user and provide clear, actionable investment recommendations. Be specific and reference actual figures from their data.
 
 FINANCIAL SNAPSHOT:
@@ -145,7 +159,7 @@ ${accountsSummary}
 ${portfolioSection ? `\n${portfolioSection}` : '\nNo investment portfolio connected.'}
 
 Retirement goal: ${goalSummary}
-
+${chatContext ? `\nRECENT ADVISOR CONVERSATIONS (last 7 days — use these to tailor recommendations to topics the user has been exploring):\n${chatContext}\n` : ''}
 Provide exactly 4 recommendations in JSON:
 {
   "summary": "2-sentence overall assessment",
@@ -160,6 +174,7 @@ Provide exactly 4 recommendations in JSON:
 
 Rules:
 - Reference actual account names, balances, and percentages from the data
+- If recent advisor conversations exist, prioritise topics the user has been asking about and build on that context
 - If T212 is connected, comment on portfolio concentration, top winners/losers, and cash allocation
 - If no T212, recommend considering investment accounts if appropriate
 - Compare ISA/pension contributions to general savings
