@@ -5,7 +5,9 @@ import AccountRow from '../AccountRow'
 
 const mockUpdate = vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) })
 const mockDelete = vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) })
-const mockFrom = vi.fn(() => ({ update: mockUpdate, delete: mockDelete }))
+const mockOr = vi.fn().mockResolvedValue({ count: 0 })
+const mockSelect = vi.fn().mockReturnValue({ or: mockOr })
+const mockFrom = vi.fn(() => ({ update: mockUpdate, delete: mockDelete, select: mockSelect }))
 const mockRefresh = vi.fn()
 
 vi.mock('@/lib/supabase/client', () => ({
@@ -17,12 +19,16 @@ vi.mock('next/navigation', () => ({
 
 const acc = {
   id: 'acc-1',
+  institution_name: null,
   name: 'Monzo',
   type: 'current',
   balance: 1500,
+  interest_rate: null,
+  rate_source: null,
   notes: null,
   is_manual: true,
   include_in_net_worth: true,
+  connection_id: null,
 }
 
 describe('AccountRow', () => {

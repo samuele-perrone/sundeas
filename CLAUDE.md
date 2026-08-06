@@ -6,9 +6,22 @@
 npm run dev      # Start dev server on localhost:3000
 npm run build    # Production build
 npm run lint     # ESLint
+npm test         # Vitest unit tests (run with: npx vitest run)
 ```
 
-No test suite. Migrations applied manually via Supabase dashboard SQL editor (schema in `supabase/schema.sql`).
+Migrations applied manually via Supabase dashboard SQL editor (schema in `supabase/schema.sql`).
+
+## Testing
+
+**Every new feature or code change must include unit tests.** Tests live in `__tests__/` directories co-located with the code they test.
+
+- Pure logic → `lib/__tests__/`
+- React components → co-located `__tests__/` next to the component
+- API route handlers → co-located `__tests__/` next to the route
+
+Use Vitest + React Testing Library. Mock Supabase via `vi.mock('@/lib/supabase/client')` and `vi.mock('@/lib/supabase/server')`. Mock `next/navigation` as needed.
+
+GitHub Actions runs tests on every PR and push to main (`.github/workflows/test.yml`).
 
 ## Architecture
 

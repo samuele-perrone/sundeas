@@ -22,26 +22,27 @@ describe('AddAccountForm', () => {
 
   it('renders all form fields', () => {
     render(<AddAccountForm userId="user-1" />)
-    expect(screen.getByPlaceholderText(/monzo current/i)).toBeInTheDocument()
-    expect(screen.getByRole('combobox')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText(/institution \(optional\)/i)).toBeInTheDocument()
+    expect(screen.getByPlaceholderText(/account name/i)).toBeInTheDocument()
     expect(screen.getByPlaceholderText('0.00')).toBeInTheDocument()
     expect(screen.getByRole('checkbox')).toBeChecked()
-    expect(screen.getByRole('button', { name: /add account/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^add$/i })).toBeInTheDocument()
   })
 
   it('submits correct payload and refreshes page', async () => {
     const user = userEvent.setup()
     render(<AddAccountForm userId="user-1" />)
 
-    await user.type(screen.getByPlaceholderText(/monzo current/i), 'Nationwide Flex')
-    await user.clear(screen.getByPlaceholderText('0.00'))
+    await user.type(screen.getByPlaceholderText(/institution \(optional\)/i), 'Nationwide')
+    await user.type(screen.getByPlaceholderText(/account name/i), 'Flex Saver')
     await user.type(screen.getByPlaceholderText('0.00'), '2500.50')
-    await user.click(screen.getByRole('button', { name: /add account/i }))
+    await user.click(screen.getByRole('button', { name: /^add$/i }))
 
     await waitFor(() => {
       expect(mockInsert).toHaveBeenCalledWith(
         expect.objectContaining({
-          name: 'Nationwide Flex',
+          institution_name: 'Nationwide',
+          name: 'Flex Saver',
           balance: 2500.5,
           is_manual: true,
           currency: 'GBP',
@@ -52,15 +53,21 @@ describe('AddAccountForm', () => {
     })
   })
 
-  it('does not call insert when balance is empty (HTML5 required validation)', async () => {
+  it('does not submit when account name is missing', async () => {
     const user = userEvent.setup()
     render(<AddAccountForm userId="user-1" />)
+    await user.type(screen.getByPlaceholderText('0.00'), '100')
+    await user.click(screen.getByRole('button', { name: /^add$/i }))
+    expect(mockInsert).not.toHaveBeenCalled()
+  })
 
-    // Fill name only — leave balance empty (required field prevents submission)
-    await user.type(screen.getByPlaceholderText(/monzo current/i), 'Test')
-    await user.click(screen.getByRole('button', { name: /add account/i }))
-
-    // HTML5 required validation blocks submit before our handler runs
+  it('shows validation error when balance is invalid', async () => {
+    const user = userEvent.setup()
+    render(<AddAccountForm userId="user-1" />)
+    await user.type(screen.getByPlaceholderText(/account name/i), 'Test')
+    // submit without balance
+    await user.click(screen.getByRole('button', { name: /^add$/i }))
+    expect(await screen.findByText(/valid balance/i)).toBeInTheDocument()
     expect(mockInsert).not.toHaveBeenCalled()
   })
 
@@ -68,24 +75,34 @@ describe('AddAccountForm', () => {
     mockInsert.mockResolvedValue({ error: { message: 'permission denied' } })
     const user = userEvent.setup()
     render(<AddAccountForm userId="user-1" />)
-
-    await user.type(screen.getByPlaceholderText(/monzo current/i), 'Test')
+    await user.type(screen.getByPlaceholderText(/account name/i), 'Test')
     await user.type(screen.getByPlaceholderText('0.00'), '100')
-    await user.click(screen.getByRole('button', { name: /add account/i }))
-
+    await user.click(screen.getByRole('button', { name: /^add$/i }))
     expect(await screen.findByText(/permission denied/i)).toBeInTheDocument()
   })
 
   it('resets form after successful submit', async () => {
     const user = userEvent.setup()
     render(<AddAccountForm userId="user-1" />)
-
-    const nameInput = screen.getByPlaceholderText(/monzo current/i)
+    const nameInput = screen.getByPlaceholderText(/account name/i)
     await user.type(nameInput, 'HSBC')
     await user.type(screen.getByPlaceholderText('0.00'), '1000')
-    await user.click(screen.getByRole('button', { name: /add account/i }))
-
+    await user.click(screen.getByRole('button', { name: /^add$/i }))
     await waitFor(() => expect(mockRefresh).toHaveBeenCalled())
     expect(nameInput).toHaveValue('')
+  })
+
+  it('includes interest_rate when provided', async () => {
+    const user = userEvent.setup()
+    render(<AddAccountForm userId="user-1" />)
+    await user.type(screen.getByPlaceholderText(/account name/i), 'ISA')
+    await user.type(screen.getByPlaceholderText('0.00'), '10000')
+    await user.type(screen.getByPlaceholderText('Rate (optional)'), '4.5')
+    await user.click(screen.getByRole('button', { name: /^add$/i }))
+    await waitFor(() => {
+      expect(mockInsert).toHaveBeenCalledWith(
+        expect.objectContaining({ interest_rate: 4.5, rate_source: 'manual' })
+      )
+    })
   })
 })
