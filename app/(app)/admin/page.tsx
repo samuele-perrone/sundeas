@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { ShieldCheck, ShieldOff, UserCheck, UserX, RefreshCw, UserPlus } from 'lucide-react'
+import { ShieldCheck, ShieldOff, UserCheck, UserX, RefreshCw, UserPlus, Send } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -36,6 +36,7 @@ export default function AdminPage() {
   const [inviting, setInviting] = useState(false)
   const [inviteError, setInviteError] = useState<string | null>(null)
   const [inviteSuccess, setInviteSuccess] = useState(false)
+  const [resending, setResending] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -65,6 +66,16 @@ export default function AdminPage() {
       setUsers(prev => prev.map(u => u.id === id ? { ...u, ...patch } : u))
     }
     setUpdating(null)
+  }
+
+  async function resendInvite(email: string) {
+    setResending(email)
+    await fetch('/api/admin/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    })
+    setResending(null)
   }
 
   async function handleInvite() {
@@ -163,6 +174,17 @@ export default function AdminPage() {
 
                     {!isSelf && (
                       <div className="flex items-center gap-2 shrink-0">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={resending === u.email}
+                          onClick={() => resendInvite(u.email)}
+                          title="Resend invite email"
+                        >
+                          <Send className="w-3.5 h-3.5 mr-1.5" />
+                          {resending === u.email ? 'Sending…' : 'Resend'}
+                        </Button>
+
                         <Button
                           size="sm"
                           variant={u.approved ? 'outline' : 'default'}
