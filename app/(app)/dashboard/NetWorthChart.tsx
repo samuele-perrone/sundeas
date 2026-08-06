@@ -17,8 +17,10 @@ const FILTERS: { key: FilterKey; label: string; months: number }[] = [
 ]
 
 function formatK(value: number) {
-  if (Math.abs(value) >= 1_000_000) return `£${(value / 1_000_000).toFixed(1)}m`
-  if (Math.abs(value) >= 1_000) return `£${(value / 1_000).toFixed(0)}k`
+  const abs = Math.abs(value)
+  if (abs >= 1_000_000) return `£${(value / 1_000_000).toFixed(1)}m`
+  if (abs >= 100_000) return `£${(value / 1_000).toFixed(0)}k`
+  if (abs >= 1_000) return `£${(value / 1_000).toFixed(1)}k`
   return `£${value.toFixed(0)}`
 }
 

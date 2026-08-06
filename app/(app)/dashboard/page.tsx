@@ -201,6 +201,39 @@ export default async function DashboardPage() {
         .reduce((s, r) => s + toMonthlyAmount(r.amount, r.frequency), 0) / numMortgages
     : 0
 
+  // Project each account to retirement using the same FV logic as the chart
+  function accountDelta(acc: (typeof includedAccounts)[number]): number {
+    const rawDelta = accountMonthlyNet[acc.id] ?? 0
+    if (acc.balance != null && acc.balance < 0 && rawDelta < 0) return -rawDelta
+    if (acc.type === 'mortgage' && rawDelta === 0) return externalMortgagePayment
+    return rawDelta
+  }
+
+  const projectedAtRetirement = (yearsLeft !== null && yearsLeft > 0 && includedAccounts.length > 0)
+    ? includedAccounts.reduce((total, acc) => {
+        return total + projectBalance(
+          accountLastBalance[acc.id] ?? 0,
+          accountDelta(acc),
+          accountMonthlyRate[acc.id] ?? 0,
+          yearsLeft * 12,
+        )
+      }, 0)
+    : null
+
+  const gapAtRetirement = (targetLumpSum !== null && projectedAtRetirement !== null)
+    ? targetLumpSum - projectedAtRetirement
+    : null
+
+  // Extra monthly saving needed to linearly close the projected gap
+  const extraMonthlyToCloseGap = (gapAtRetirement !== null && gapAtRetirement > 0 && yearsLeft)
+    ? gapAtRetirement / (yearsLeft * 12)
+    : null
+
+  // Rough lump-sum equivalent: amount you'd need to invest today at 5% AER to generate that extra monthly
+  const investmentEquivalent = extraMonthlyToCloseGap !== null
+    ? Math.round((extraMonthlyToCloseGap * 12) / 0.05)
+    : null
+
   // Anchor at today if no history but something to project
   if (allHistMonths.length === 0 && hasProjection) {
     const todayLabel = now.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
@@ -276,7 +309,16 @@ export default async function DashboardPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
               Total net worth
             </CardTitle>
-            <SnapshotButton />
+            <SnapshotButton
+              lastSnapshotAt={(snapshots ?? []).at(-1)?.snapshotted_at ?? null}
+              accounts={(accounts ?? []).map(a => ({
+                id: a.id,
+                name: a.name,
+                institution_name: a.institution_name,
+                type: a.type,
+                balance: a.balance,
+              }))}
+            />
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -302,6 +344,17 @@ export default async function DashboardPage() {
             </p>
           )}
           <NetWorthChart data={chartData} accountSeries={categorySeries} />
+          <div className="border-t border-border pt-3 space-y-1">
+            <p className="text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">Solid lines</span> — actual balance snapshots you&apos;ve taken. Take a snapshot each month to build up real history.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">Dashed lines</span> — projection from your last snapshot using each account&apos;s interest rate (compounded monthly) and your recurring payments.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              The <span className="font-medium text-foreground">time filter</span> (1M / 3M / 6M / 1Y / Retirement) controls how far ahead the projection is shown — history always displays in full.
+            </p>
+          </div>
         </CardContent>
       </Card>
 
@@ -321,7 +374,7 @@ export default async function DashboardPage() {
                   <p className="text-sm text-muted-foreground pb-1">{formatGBP(targetLumpSum!)} target</p>
                 </div>
                 <Progress
-                  value={progress}
+                  value={Math.min(progress, 100)}
                   aria-label={`${Math.round(progress)}% of retirement target reached`}
                   className="h-2"
                 />
@@ -329,12 +382,55 @@ export default async function DashboardPage() {
                   {yearsLeft !== null && (
                     <p className="text-xs text-muted-foreground">{yearsLeft} years remaining</p>
                   )}
-                  {monthlyRequired !== null && monthlyRequired > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      Save ~{formatGBP(monthlyRequired)}/month to stay on track
-                    </p>
-                  )}
                 </div>
+
+                {/* Gap analysis */}
+                {projectedAtRetirement !== null && (
+                  <div className="pt-2 border-t border-border space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-muted-foreground">Projected at retirement</p>
+                      <p className={`text-xs font-semibold tabular-nums ${projectedAtRetirement >= targetLumpSum! ? 'text-emerald-600' : 'text-foreground'}`}>
+                        {formatGBP(Math.round(projectedAtRetirement))}
+                      </p>
+                    </div>
+
+                    {gapAtRetirement !== null && gapAtRetirement > 0 ? (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs text-muted-foreground">Still needed</p>
+                          <p className="text-xs font-semibold tabular-nums text-amber-600">
+                            {formatGBP(Math.round(gapAtRetirement))}
+                          </p>
+                        </div>
+                        <div className="rounded-lg bg-amber-50 border border-amber-100 px-3 py-2.5 space-y-1.5">
+                          <p className="text-xs font-medium text-amber-800">To close the gap you could:</p>
+                          {extraMonthlyToCloseGap !== null && (
+                            <p className="text-xs text-amber-700">
+                              · Save an extra <span className="font-semibold">{formatGBP(Math.round(extraMonthlyToCloseGap))}/month</span>
+                            </p>
+                          )}
+                          {investmentEquivalent !== null && investmentEquivalent > 0 && (
+                            <p className="text-xs text-amber-700">
+                              · Invest a lump sum of <span className="font-semibold">{formatGBP(investmentEquivalent)}</span> at 5% AER now
+                            </p>
+                          )}
+                          {extraMonthlyToCloseGap !== null && (
+                            <p className="text-xs text-amber-700">
+                              · Generate <span className="font-semibold">{formatGBP(Math.round(extraMonthlyToCloseGap))}/month</span> more in passive income or returns
+                            </p>
+                          )}
+                        </div>
+                      </>
+                    ) : gapAtRetirement !== null && gapAtRetirement <= 0 ? (
+                      <div className="rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2 flex items-center gap-2">
+                        <TrendingUp className="w-3.5 h-3.5 text-emerald-600 shrink-0" aria-hidden="true" />
+                        <p className="text-xs text-emerald-700 font-medium">
+                          On track — projected to exceed target by {formatGBP(Math.round(-gapAtRetirement))}
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
               </>
             ) : (
               <div className="py-2">

@@ -40,10 +40,12 @@ export default function GoalForm({
   const [form, setForm] = useState({
     target_retirement_age: String(existingGoal?.target_retirement_age ?? profile?.target_retirement_age ?? 57),
     target_monthly_income: String(existingGoal?.target_monthly_income ?? ''),
-    target_lump_sum: String(existingGoal?.target_lump_sum ?? ''),
     notes: existingGoal?.notes ?? '',
     dob: profile?.date_of_birth ?? '',
   })
+
+  const monthlyIncome = parseFloat(form.target_monthly_income) || 0
+  const derivedLumpSum = monthlyIncome > 0 ? Math.round((monthlyIncome * 12) / 0.04) : null
 
   const set = (field: string, value: string) => {
     setSaved(false)
@@ -61,7 +63,6 @@ export default function GoalForm({
       setForm(f => ({
         ...f,
         target_monthly_income: String(data.target_monthly_income ?? ''),
-        target_lump_sum: String(data.target_lump_sum ?? ''),
       }))
       if (data.reasoning) setReasoning(data.reasoning)
     } catch (e: unknown) {
@@ -85,8 +86,8 @@ export default function GoalForm({
     const payload = {
       user_id: userId,
       target_retirement_age: parseInt(form.target_retirement_age, 10),
-      target_monthly_income: form.target_monthly_income ? parseFloat(form.target_monthly_income) : null,
-      target_lump_sum: form.target_lump_sum ? parseFloat(form.target_lump_sum) : null,
+      target_monthly_income: monthlyIncome || null,
+      target_lump_sum: derivedLumpSum,
       notes: form.notes || null,
       updated_at: new Date().toISOString(),
     }
@@ -164,18 +165,7 @@ export default function GoalForm({
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="goal-lump-sum">Target lump sum (£)</Label>
-            <Input
-              id="goal-lump-sum"
-              type="number"
-              step="1000"
-              placeholder="e.g. 500000"
-              value={form.target_lump_sum}
-              onChange={e => set('target_lump_sum', e.target.value)}
-            />
-          </div>
+        <div className="grid grid-cols-2 gap-4 items-end">
           <div className="space-y-2">
             <Label htmlFor="goal-monthly">Monthly income target (£)</Label>
             <Input
@@ -186,6 +176,12 @@ export default function GoalForm({
               value={form.target_monthly_income}
               onChange={e => set('target_monthly_income', e.target.value)}
             />
+          </div>
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">Required pot (4% rule)</p>
+            <p className="h-10 flex items-center px-3 rounded-lg border border-input bg-secondary/40 text-sm font-semibold tabular-nums">
+              {derivedLumpSum ? `£${derivedLumpSum.toLocaleString('en-GB')}` : '—'}
+            </p>
           </div>
         </div>
       </div>
