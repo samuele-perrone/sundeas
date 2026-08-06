@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { Resend } from 'resend'
+
+const resend = new Resend(process.env.RESEND_API_KEY)
 
 async function requireSuperAdmin() {
   const supabase = await createClient()
@@ -41,15 +44,52 @@ export async function POST(req: NextRequest) {
   const admin = createAdminClient()
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://sundeas.com'
 
-  const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
-    redirectTo: `${appUrl}/api/auth/callback`,
+  // Generate invite link without sending Supabase's default email
+  const { data, error } = await admin.auth.admin.generateLink({
+    type: 'invite',
+    email,
+    options: { redirectTo: `${appUrl}/api/auth/callback` },
   })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Auto-approve so they have access immediately
+  // Auto-approve so they have access immediately on sign-in
   if (data.user) {
     await admin.from('profiles').update({ approved: true }).eq('id', data.user.id)
   }
+
+  const inviteLink = data.properties?.action_link
+  const from = process.env.RESEND_FROM ?? 'Sundeas <hello@sundeas.com>'
+
+  await resend.emails.send({
+    from,
+    to: email,
+    subject: "You've been invited to Sundeas",
+    html: `
+      <div style="font-family: -apple-system, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; color: #0f172a;">
+        <div style="margin-bottom: 24px;">
+          <span style="font-size: 20px; font-weight: 700;">Sundeas</span>
+        </div>
+
+        <h1 style="font-size: 20px; font-weight: 600; margin: 0 0 8px;">You've been invited</h1>
+        <p style="color: #64748b; margin: 0 0 24px; font-size: 15px;">
+          You've been invited to join Sundeas — a personal wealth management and retirement planning tool.
+        </p>
+
+        <a href="${inviteLink}" style="display: inline-block; background: #0f172a; color: white; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: 500;">
+          Accept invitation →
+        </a>
+
+        <p style="color: #64748b; font-size: 14px; margin-top: 24px;">
+          Or sign in at <a href="${appUrl}/login" style="color: #0f172a;">${appUrl}/login</a> using your Google account.
+        </p>
+
+        <p style="color: #94a3b8; font-size: 12px; margin-top: 32px; border-top: 1px solid #e2e8f0; padding-top: 16px;">
+          You're receiving this because someone invited you to Sundeas.
+          Sundeas provides information only — not regulated financial advice.
+        </p>
+      </div>
+    `,
+  })
 
   return NextResponse.json({ ok: true })
 }
