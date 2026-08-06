@@ -21,8 +21,7 @@ export default function LoginPage() {
       <Card className="w-full max-w-sm shadow-md">
         <CardHeader className="pb-2">
           <div className="flex items-baseline gap-0.5 mb-1">
-            <span className="text-xl font-bold tracking-tight">Wealth</span>
-            <span className="text-xl font-bold text-primary">.</span>
+            <span className="text-xl font-bold tracking-tight">Sundeas</span>
           </div>
           <CardTitle className="text-lg">Sign in</CardTitle>
           <CardDescription>Sign in to your account.</CardDescription>

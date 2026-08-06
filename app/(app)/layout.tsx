@@ -23,8 +23,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             href="/dashboard"
             className="flex items-baseline gap-0.5 w-fit focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 rounded"
           >
-            <span className="text-xl font-bold tracking-tight text-white">Wealth</span>
-            <span className="text-xl font-bold text-indigo-400">.</span>
+            <span className="text-xl font-bold tracking-tight text-white">Sundeas</span>
           </Link>
         </div>
 
