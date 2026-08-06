@@ -1,8 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
 import {
-  calcNetWorth, calcYearsToRetirement, toMonthlyAmount, formatGBP,
+  calcNetWorth, calcRetirementProgress, calcYearsToRetirement,
+  calcRequiredMonthlySaving, toMonthlyAmount, formatGBP,
 } from '@/lib/finance'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import Link from 'next/link'
@@ -63,8 +65,12 @@ export default async function DashboardPage() {
   ])
 
   const netWorth = calcNetWorth(accounts ?? [])
-  const targetAge = goal?.target_retirement_age ?? profile?.target_retirement_age ?? 57
-  const yearsLeft = calcYearsToRetirement(profile?.date_of_birth ?? null, targetAge)
+  const targetAge = goal?.target_retirement_age ?? profile?.target_retirement_age ?? null
+  const yearsLeft = calcYearsToRetirement(profile?.date_of_birth ?? null, targetAge ?? 57)
+  const targetLumpSum: number | null = goal?.target_lump_sum ?? null
+  const progress = targetLumpSum ? calcRetirementProgress(netWorth, targetLumpSum) : null
+  const monthlyRequired = targetLumpSum && yearsLeft !== null
+    ? calcRequiredMonthlySaving(netWorth, targetLumpSum, yearsLeft) : null
 
   const byType: Record<string, number> = {}
   for (const acc of accounts ?? []) {
@@ -202,6 +208,29 @@ export default async function DashboardPage() {
     if (acc.type === 'mortgage' && rawDelta === 0) return externalMortgagePayment
     return rawDelta
   }
+
+  const projectedAtRetirement = (yearsLeft !== null && yearsLeft > 0 && includedAccounts.length > 0)
+    ? includedAccounts.reduce((total, acc) => {
+        return total + projectBalance(
+          accountLastBalance[acc.id] ?? 0,
+          accountDelta(acc),
+          accountMonthlyRate[acc.id] ?? 0,
+          yearsLeft * 12,
+        )
+      }, 0)
+    : null
+
+  const gapAtRetirement = (targetLumpSum !== null && projectedAtRetirement !== null)
+    ? targetLumpSum - projectedAtRetirement
+    : null
+
+  const extraMonthlyToCloseGap = (gapAtRetirement !== null && gapAtRetirement > 0 && yearsLeft)
+    ? gapAtRetirement / (yearsLeft * 12)
+    : null
+
+  const investmentEquivalent = extraMonthlyToCloseGap !== null
+    ? Math.round((extraMonthlyToCloseGap * 12) / 0.05)
+    : null
 
   // Anchor at today if no history but something to project
   if (allHistMonths.length === 0 && hasProjection) {
@@ -391,33 +420,121 @@ export default async function DashboardPage() {
         </Card>
       )}
 
-      {/* Breakdown */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-            Breakdown
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {Object.keys(byType).length === 0 ? (
-            <p className="text-sm text-muted-foreground">No accounts yet.</p>
-          ) : (
-            <ul className="space-y-2" aria-label="Net worth by account type">
-              {Object.entries(byType).map(([type, total], i, arr) => (
-                <li key={type}>
-                  <div className="flex items-center justify-between text-sm py-1">
-                    <span className="text-muted-foreground">{TYPE_LABELS[type] ?? type}</span>
-                    <span className={`font-semibold tabular-nums ${total < 0 ? 'text-destructive' : 'text-foreground'}`}>
-                      {formatGBP(total)}
-                    </span>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Retirement progress */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+              {targetAge ? `Retirement at ${targetAge}` : 'Retirement'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {progress !== null ? (
+              <>
+                <div className="flex items-end justify-between">
+                  <p className="text-3xl font-bold tracking-tight">{Math.round(progress)}%</p>
+                  <p className="text-sm text-muted-foreground pb-1">{formatGBP(targetLumpSum!)} target</p>
+                </div>
+                <Progress
+                  value={Math.min(progress, 100)}
+                  aria-label={`${Math.round(progress)}% of retirement target reached`}
+                  className="h-2"
+                />
+                <div className="flex flex-col gap-1 pt-1">
+                  {yearsLeft !== null && (
+                    <p className="text-xs text-muted-foreground">{yearsLeft} years remaining</p>
+                  )}
+                </div>
+
+                {/* Gap analysis */}
+                {projectedAtRetirement !== null && (
+                  <div className="pt-2 border-t border-border space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-muted-foreground">Projected at retirement</p>
+                      <p className={`text-xs font-semibold tabular-nums ${projectedAtRetirement >= targetLumpSum! ? 'text-emerald-600' : 'text-foreground'}`}>
+                        {formatGBP(Math.round(projectedAtRetirement))}
+                      </p>
+                    </div>
+
+                    {gapAtRetirement !== null && gapAtRetirement > 0 ? (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs text-muted-foreground">Still needed</p>
+                          <p className="text-xs font-semibold tabular-nums text-amber-600">
+                            {formatGBP(Math.round(gapAtRetirement))}
+                          </p>
+                        </div>
+                        <div className="rounded-lg bg-amber-50 border border-amber-100 px-3 py-2.5 space-y-1.5">
+                          <p className="text-xs font-medium text-amber-800">To close the gap you could:</p>
+                          {extraMonthlyToCloseGap !== null && (
+                            <p className="text-xs text-amber-700">
+                              · Save an extra <span className="font-semibold">{formatGBP(Math.round(extraMonthlyToCloseGap))}/month</span>
+                            </p>
+                          )}
+                          {investmentEquivalent !== null && investmentEquivalent > 0 && (
+                            <p className="text-xs text-amber-700">
+                              · Invest a lump sum of <span className="font-semibold">{formatGBP(investmentEquivalent)}</span> at 5% AER now
+                            </p>
+                          )}
+                          {extraMonthlyToCloseGap !== null && (
+                            <p className="text-xs text-amber-700">
+                              · Generate <span className="font-semibold">{formatGBP(Math.round(extraMonthlyToCloseGap))}/month</span> more in passive income or returns
+                            </p>
+                          )}
+                        </div>
+                      </>
+                    ) : gapAtRetirement !== null && gapAtRetirement <= 0 ? (
+                      <div className="rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2 flex items-center gap-2">
+                        <TrendingUp className="w-3.5 h-3.5 text-emerald-600 shrink-0" aria-hidden="true" />
+                        <p className="text-xs text-emerald-700 font-medium">
+                          On track — projected to exceed target by {formatGBP(Math.round(-gapAtRetirement))}
+                        </p>
+                      </div>
+                    ) : null}
                   </div>
-                  {i < arr.length - 1 && <Separator />}
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+                )}
+              </>
+            ) : (
+              <div className="py-2">
+                <p className="text-sm text-muted-foreground">
+                  <Link href="/plan" className="text-primary underline-offset-4 hover:underline">
+                    Set your retirement goal
+                  </Link>{' '}
+                  to see progress here.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Breakdown */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+              Breakdown
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {Object.keys(byType).length === 0 ? (
+              <p className="text-sm text-muted-foreground">No accounts yet.</p>
+            ) : (
+              <ul className="space-y-2" aria-label="Net worth by account type">
+                {Object.entries(byType).map(([type, total], i, arr) => (
+                  <li key={type}>
+                    <div className="flex items-center justify-between text-sm py-1">
+                      <span className="text-muted-foreground">{TYPE_LABELS[type] ?? type}</span>
+                      <span className={`font-semibold tabular-nums ${total < 0 ? 'text-destructive' : 'text-foreground'}`}>
+                        {formatGBP(total)}
+                      </span>
+                    </div>
+                    {i < arr.length - 1 && <Separator />}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Action items */}
       <Card>
