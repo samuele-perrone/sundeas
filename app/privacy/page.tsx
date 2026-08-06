@@ -28,7 +28,6 @@ export default function PrivacyPage() {
           <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
             <li>Your Google account email and name (via Google OAuth sign-in)</li>
             <li>Financial data you manually enter (account balances, budgets, goals)</li>
-            <li>Bank connection data if you connect external accounts</li>
             <li>Usage data such as page visits and feature interactions</li>
           </ul>
         </section>

@@ -35,8 +35,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="px-5 py-6 shrink-0">
           <Link
             href="/dashboard"
-            className="flex items-baseline gap-0.5 w-fit focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 rounded"
+            className="flex items-center gap-2.5 w-fit focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 rounded"
           >
+            <svg viewBox="0 0 100 100" className="w-7 h-7 shrink-0" aria-hidden="true">
+              <rect width="100" height="100" rx="22" fill="white" fillOpacity="0.12"/>
+              <g transform="translate(50,52)">
+                <path d="M-22 4 A22 22 0 0 1 22 4 Z" fill="white"/>
+                <g stroke="white" strokeWidth="3" strokeLinecap="round" fill="none">
+                  <line x1="0" y1="-34" x2="0" y2="-26"/>
+                  <line x1="-24" y1="-24" x2="-19" y2="-18"/>
+                  <line x1="24" y1="-24" x2="19" y2="-18"/>
+                  <line x1="-30" y1="10" x2="30" y2="10"/>
+                </g>
+              </g>
+            </svg>
             <span className="text-xl font-bold tracking-tight text-white">Sundeas</span>
           </Link>
         </div>

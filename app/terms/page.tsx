@@ -94,6 +94,7 @@ export default function TermsPage() {
             Sundeas integrates with third-party services including Supabase, Anthropic, Trading 212,
             and Google. We are not responsible for the availability, accuracy, or conduct of these
             services. Your use of third-party integrations is subject to their respective terms.
+            Trading 212 integration is read-only and does not allow any transactions or account changes.
           </p>
         </section>
 

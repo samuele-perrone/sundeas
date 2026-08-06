@@ -9,8 +9,6 @@ export const metadata: Metadata = {
   title: 'Sundeas',
   description: 'Personal wealth management and retirement planning',
   icons: {
-    icon: '/favicon-32x32.png',
-    shortcut: '/favicon-32x32.png',
     apple: '/apple-touch-icon.png',
   },
 }
