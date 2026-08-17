@@ -10,11 +10,19 @@ export async function PATCH(
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { id } = await params
-  const { name, amount, frequency, type, category, account_id, to_account_id, payment_date } = await req.json()
+  const { name, amount, frequency, type, category, account_id, to_account_id, payment_date, payment_day, payment_month } = await req.json()
 
   const { error } = await supabase
     .from('recurring_payments')
-    .update({ name, amount, frequency, type, category: category ?? null, account_id, to_account_id: to_account_id ?? null, payment_date: payment_date ?? null })
+    .update({
+      name, amount, frequency, type,
+      category: category ?? null,
+      account_id,
+      to_account_id: to_account_id ?? null,
+      payment_date: payment_date ?? null,
+      payment_day: payment_day ?? null,
+      payment_month: payment_month ?? null,
+    })
     .eq('id', id)
     .eq('user_id', user.id)
 

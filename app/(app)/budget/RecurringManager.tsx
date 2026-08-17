@@ -20,6 +20,8 @@ type RecurringPayment = {
   type: string
   category: string | null
   payment_date: string | null
+  payment_day: number | null
+  payment_month: number | null
 }
 
 type Account = { id: string; name: string; institution_name: string | null }
@@ -58,6 +60,19 @@ const CAT_LABEL: Record<string, string> = {
 
 const FREQ_LABEL: Record<string, string> = { weekly: 'weekly', monthly: 'monthly', annual: 'annual', once: 'one-off' }
 
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+]
+
+const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+
+function ordinal(n: number) {
+  const s = ['th', 'st', 'nd', 'rd']
+  const v = n % 100
+  return n + (s[(v - 20) % 10] ?? s[v] ?? s[0])
+}
+
 type ItemType = 'income' | 'expense' | 'transfer'
 
 export default function RecurringManager({
@@ -86,6 +101,8 @@ export default function RecurringManager({
   const [fAmount, setFAmount] = useState('')
   const [fFreq, setFFreq] = useState('monthly')
   const [fPaymentDate, setFPaymentDate] = useState('')
+  const [fPaymentDay, setFPaymentDay] = useState('')
+  const [fPaymentMonth, setFPaymentMonth] = useState('')
 
   const openAdd = (type: ItemType, once = false) => {
     setEditing(null)
@@ -97,6 +114,8 @@ export default function RecurringManager({
     setFAmount('')
     setFFreq(once ? 'once' : 'monthly')
     setFPaymentDate('')
+    setFPaymentDay('')
+    setFPaymentMonth('')
     setOpen(true)
   }
 
@@ -110,6 +129,8 @@ export default function RecurringManager({
     setFAmount(String(item.amount))
     setFFreq(item.frequency)
     setFPaymentDate(item.payment_date ? item.payment_date.slice(0, 7) : '')
+    setFPaymentDay(item.payment_day ? String(item.payment_day) : '')
+    setFPaymentMonth(item.payment_month ? String(item.payment_month) : '')
     setOpen(true)
   }
 
@@ -127,6 +148,8 @@ export default function RecurringManager({
         account_id: fAccountId,
         to_account_id: fType === 'transfer' ? fToAccountId : null,
         payment_date: fFreq === 'once' ? (fPaymentDate ? `${fPaymentDate}-01` : null) : null,
+        payment_day: fPaymentDay ? parseInt(fPaymentDay) : null,
+        payment_month: fFreq === 'annual' && fPaymentMonth ? parseInt(fPaymentMonth) : null,
       }
       const url = editing ? `/api/recurring/${editing.id}` : '/api/recurring'
       const method = editing ? 'PATCH' : 'POST'
@@ -149,9 +172,25 @@ export default function RecurringManager({
     return a.institution_name ? `${a.institution_name} · ${a.name}` : a.name
   }
 
+  function paymentScheduleLabel(item: RecurringPayment): string {
+    if (item.frequency === 'monthly') {
+      return item.payment_day ? `monthly on the ${ordinal(item.payment_day)}` : 'monthly'
+    }
+    if (item.frequency === 'annual') {
+      const month = item.payment_month ? MONTHS[item.payment_month - 1] : null
+      const day = item.payment_day ? ` ${ordinal(item.payment_day)}` : ''
+      return month ? `every ${month}${day}` : 'annual'
+    }
+    if (item.frequency === 'weekly') {
+      return item.payment_day ? `every ${DAYS_OF_WEEK[(item.payment_day - 1) % 7]}` : 'weekly'
+    }
+    return FREQ_LABEL[item.frequency] ?? item.frequency
+  }
+
   const renderItem = (item: RecurringPayment) => {
     const monthly = toMonthlyAmount(item.amount, item.frequency)
     const isTransfer = item.type === 'transfer'
+    const scheduleLabel = paymentScheduleLabel(item)
     return (
       <li key={item.id} className="flex items-center gap-3 py-2.5 group">
         <div className="flex-1 min-w-0">
@@ -169,7 +208,7 @@ export default function RecurringManager({
               ? item.payment_date
                 ? ` · ${new Date(`${item.payment_date}T12:00:00`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}`
                 : ' · one-off'
-              : ` · ${FREQ_LABEL[item.frequency] ?? item.frequency}${item.frequency !== 'monthly' ? ` (${formatGBP(monthly)}/mo)` : ''}`
+              : ` · ${scheduleLabel}${item.frequency !== 'monthly' ? ` (${formatGBP(monthly)}/mo)` : ''}`
             }
             {isTransfer && item.to_account_id ? (
               <span className="opacity-70">
@@ -337,7 +376,7 @@ export default function RecurringManager({
             <p className="text-sm text-muted-foreground py-2">Add accounts first before adding recurring payments.</p>
           ) : (
             <div className="space-y-4">
-              {/* Type + Category (or Type alone for transfer) */}
+              {/* Type + Category */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="rec-type">Type</Label>
@@ -446,7 +485,7 @@ export default function RecurringManager({
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="rec-freq">Frequency</Label>
-                  <Select value={fFreq} onValueChange={setFFreq}>
+                  <Select value={fFreq} onValueChange={v => { setFFreq(v); setFPaymentDay(''); setFPaymentMonth('') }}>
                     <SelectTrigger id="rec-freq"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="weekly">Weekly</SelectItem>
@@ -458,6 +497,7 @@ export default function RecurringManager({
                 </div>
               </div>
 
+              {/* One-off: pick month */}
               {fFreq === 'once' && (
                 <div className="space-y-1.5">
                   <Label htmlFor="rec-date">Month</Label>
@@ -469,6 +509,68 @@ export default function RecurringManager({
                     onChange={e => setFPaymentDate(e.target.value)}
                     className="w-48"
                   />
+                </div>
+              )}
+
+              {/* Monthly: pick day of month */}
+              {fFreq === 'monthly' && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="rec-day">Day of month <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                  <Select value={fPaymentDay} onValueChange={setFPaymentDay}>
+                    <SelectTrigger id="rec-day" className="w-40">
+                      <SelectValue placeholder="Select day…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
+                        <SelectItem key={d} value={String(d)}>{ordinal(d)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Annual: pick month + day */}
+              {fFreq === 'annual' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="rec-month">Month <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                    <Select value={fPaymentMonth} onValueChange={setFPaymentMonth}>
+                      <SelectTrigger id="rec-month"><SelectValue placeholder="Select…" /></SelectTrigger>
+                      <SelectContent>
+                        {MONTHS.map((m, i) => (
+                          <SelectItem key={i + 1} value={String(i + 1)}>{m}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="rec-day-annual">Day <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                    <Select value={fPaymentDay} onValueChange={setFPaymentDay}>
+                      <SelectTrigger id="rec-day-annual"><SelectValue placeholder="Select…" /></SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
+                          <SelectItem key={d} value={String(d)}>{ordinal(d)}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
+
+              {/* Weekly: pick day of week */}
+              {fFreq === 'weekly' && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="rec-dow">Day of week <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                  <Select value={fPaymentDay} onValueChange={setFPaymentDay}>
+                    <SelectTrigger id="rec-dow" className="w-40">
+                      <SelectValue placeholder="Select day…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DAYS_OF_WEEK.map((d, i) => (
+                        <SelectItem key={i + 1} value={String(i + 1)}>{d}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
             </div>

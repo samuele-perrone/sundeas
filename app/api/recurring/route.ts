@@ -6,11 +6,18 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { name, amount, frequency, type, category, account_id, to_account_id, payment_date } = await req.json()
+  const { name, amount, frequency, type, category, account_id, to_account_id, payment_date, payment_day, payment_month } = await req.json()
 
   const { data, error } = await supabase
     .from('recurring_payments')
-    .insert({ user_id: user.id, account_id, name, amount, frequency, type, category: category ?? null, to_account_id: to_account_id ?? null, payment_date: payment_date ?? null })
+    .insert({
+      user_id: user.id, account_id, name, amount, frequency, type,
+      category: category ?? null,
+      to_account_id: to_account_id ?? null,
+      payment_date: payment_date ?? null,
+      payment_day: payment_day ?? null,
+      payment_month: payment_month ?? null,
+    })
     .select()
     .single()
 

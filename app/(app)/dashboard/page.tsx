@@ -86,10 +86,12 @@ export default async function DashboardPage() {
 
   const includeIds = new Set((accounts ?? []).filter(a => a.include_in_net_worth).map(a => a.id))
 
-  // Per-account monthly delta (income/expense/transfers each affect specific accounts)
+  // Per-account base monthly delta — excludes annual payments with a known month (handled per-month in projection)
   const accountMonthlyNet: Record<string, number> = {}
   for (const r of allRecurring) {
-    const monthly = toMonthlyAmount(r.amount, r.frequency)
+    // Annual payments with a payment_month are applied as a lump sum in the right month, not smoothed
+    const isAnnualWithMonth = r.frequency === 'annual' && r.payment_month != null
+    const monthly = isAnnualWithMonth ? 0 : toMonthlyAmount(r.amount, r.frequency)
     if (r.type === 'income') {
       accountMonthlyNet[r.account_id] = (accountMonthlyNet[r.account_id] ?? 0) + monthly
     } else if (r.type === 'expense') {
@@ -99,6 +101,15 @@ export default async function DashboardPage() {
       if (r.to_account_id) {
         accountMonthlyNet[r.to_account_id] = (accountMonthlyNet[r.to_account_id] ?? 0) + monthly
       }
+    }
+  }
+
+  // Annual payments that have a specific month — applied as a full lump sum in that calendar month
+  const annualByAccount: Record<string, { amount: number; month: number; type: string; to_account_id: string | null }[]> = {}
+  for (const r of allRecurring) {
+    if (r.frequency === 'annual' && r.payment_month != null) {
+      if (!annualByAccount[r.account_id]) annualByAccount[r.account_id] = []
+      annualByAccount[r.account_id].push({ amount: r.amount, month: r.payment_month, type: r.type, to_account_id: r.to_account_id ?? null })
     }
   }
 
@@ -253,36 +264,58 @@ export default async function DashboardPage() {
     }
   }
 
-  // Project forward — each account compounds individually, summed per category
+  // Project forward — running balance simulation per account so annual payments
+  // land as a full spike in the correct calendar month instead of being smoothed.
   if (hasProjection) {
+    const runningBalance: Record<string, number> = {}
+    for (const acc of includedAccounts) {
+      runningBalance[acc.id] = accountLastBalance[acc.id] ?? 0
+    }
+
     for (let m = 1; m <= projMonths; m++) {
       const d = new Date(projStartDate.getFullYear(), projStartDate.getMonth() + m, 1)
+      const calMonth = d.getMonth() + 1 // 1–12
       const label = d.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
       const point: ChartPoint = { label }
       let total = 0
-      for (const [type, accs] of Object.entries(typeAccounts)) {
-        const typeVal = accs.reduce((sum, acc) => {
-          const base = accountLastBalance[acc.id] ?? 0
-          const rate = accountMonthlyRate[acc.id] ?? 0
-          const rawDelta = accountMonthlyNet[acc.id] ?? 0
 
-          let delta: number
-          if (base < 0 && rawDelta < 0) {
-            // Expense directly on a negative-balance account (e.g. expense on mortgage account):
-            // this is a debt payment — flip sign so it pushes balance toward 0.
-            delta = -rawDelta
-          } else {
-            // Transfer in (already positive → reduces negative balance correctly),
-            // regular positive-balance accounts, or no payment.
-            delta = rawDelta
+      for (const acc of includedAccounts) {
+        const rate = accountMonthlyRate[acc.id] ?? 0
+        const rawDelta = accountMonthlyNet[acc.id] ?? 0
+
+        let delta = rawDelta
+        if (runningBalance[acc.id] < 0 && rawDelta < 0) delta = -rawDelta
+        if (acc.type === 'mortgage' && rawDelta === 0) delta += externalMortgagePayment
+
+        // Compound interest + regular monthly delta
+        runningBalance[acc.id] = runningBalance[acc.id] * (1 + rate) + delta
+
+        // Apply annual lump sums that fall in this calendar month
+        for (const annual of (annualByAccount[acc.id] ?? [])) {
+          if (annual.month === calMonth) {
+            const sign = annual.type === 'income' ? 1 : -1
+            runningBalance[acc.id] += sign * annual.amount
           }
-          // If no payment is directly linked to a mortgage account, look for expenses
-          // entered on other accounts with category='mortgage' (most common pattern).
-          if (acc.type === 'mortgage' && rawDelta === 0) {
-            delta += externalMortgagePayment
+        }
+        // Annual transfers to another account
+        for (const [fromId, annuals] of Object.entries(annualByAccount)) {
+          for (const annual of annuals) {
+            if (annual.type === 'transfer' && annual.to_account_id === acc.id && annual.month === calMonth) {
+              runningBalance[acc.id] += annual.amount
+            }
           }
-          return sum + projectBalance(base, delta, rate, m)
-        }, 0)
+          if (fromId === acc.id) {
+            for (const annual of annuals) {
+              if (annual.type === 'transfer' && annual.month === calMonth) {
+                runningBalance[acc.id] -= annual.amount
+              }
+            }
+          }
+        }
+      }
+
+      for (const [type, accs] of Object.entries(typeAccounts)) {
+        const typeVal = accs.reduce((sum, acc) => sum + runningBalance[acc.id], 0)
         point[`p_${type}`] = Math.round(typeVal)
         total += typeVal
       }
