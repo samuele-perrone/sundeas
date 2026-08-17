@@ -144,13 +144,12 @@ export default async function DashboardPage() {
   const accountTypeMap: Record<string, string> = {}
   for (const acc of accounts ?? []) accountTypeMap[acc.id] = acc.type
 
-  // Group snapshots by calendar month — latest balance per account per month wins.
-  // Multiple snapshots in the same month accumulate in the DB (no deletion),
-  // but the chart shows one data point per month using the most recent reading.
+  // Group snapshots by calendar date (YYYY-MM-DD) — latest balance per account per day wins.
+  // Multiple snapshots on the same day are de-duplicated; different days appear as separate chart points.
   const accountByMonth: Record<string, Record<string, number>> = {}
   for (const snap of (snapshots ?? []).sort((a, b) => a.snapshotted_at.localeCompare(b.snapshotted_at))) {
     if (!includeIds.has(snap.account_id)) continue
-    const month = snap.snapshotted_at.slice(0, 7)
+    const month = snap.snapshotted_at.slice(0, 10)
     if (!accountByMonth[snap.account_id]) accountByMonth[snap.account_id] = {}
     accountByMonth[snap.account_id][month] = Number(snap.balance)
   }
@@ -199,7 +198,9 @@ export default async function DashboardPage() {
   }
 
   const now = new Date()
-  const projStartDate = lastSnapshotTs ? new Date(lastSnapshotTs + '-01') : now
+  const projStartDate = lastSnapshotTs
+    ? (() => { const [y, m, d] = lastSnapshotTs.split('-').map(Number); return new Date(y, m - 1, d) })()
+    : now
 
   // How many projected months have already passed (last snapshot → today)
   // These render as solid extension of the historical line, not dotted.
@@ -213,10 +214,11 @@ export default async function DashboardPage() {
   type ChartPoint = Record<string, string | number | undefined>
   const chartData: ChartPoint[] = []
 
-  // Historical points — one per calendar month (latest snapshot reading for that month)
+  // Historical points — one per calendar date (latest snapshot reading for that day)
   for (const month of allSnapshotTs) {
+    const [sy, sm, sd] = month.split('-').map(Number)
     const point: ChartPoint = {
-      label: new Date(month + '-01').toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }),
+      label: new Date(sy, sm - 1, sd).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' }),
       netWorth: Math.round(byMonth[month]),
     }
     for (const type of Object.keys(typeAccounts)) {
@@ -280,7 +282,7 @@ export default async function DashboardPage() {
 
   // Anchor at today if no history but something to project
   if (allSnapshotTs.length === 0 && hasProjection) {
-    const todayLabel = now.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
+    const todayLabel = now.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' })
     const point: ChartPoint = { label: todayLabel, netWorth, projected: netWorth }
     for (const [type, accs] of Object.entries(typeAccounts)) {
       const bal = accs.reduce((s, a) => s + (a.balance ?? 0), 0)
