@@ -86,10 +86,10 @@ export default function NetWorthChart({
 }) {
   const [filter, setFilter] = useState<FilterKey>('Retirement')
 
-  if (data.length < 2) {
+  if (data.length === 0) {
     return (
       <div className="flex items-center justify-center h-40 text-sm text-muted-foreground">
-        Take at least two snapshots, or add income/expenses in Budget to see a projection.
+        Take a snapshot to start tracking your net worth over time.
       </div>
     )
   }
@@ -207,7 +207,7 @@ export default function NetWorthChart({
             stroke="#4f46e5"
             strokeWidth={hasAccounts ? 2.5 : 2}
             fill="url(#nwGradient)"
-            dot={hasAccounts ? false : { fill: '#4f46e5', r: 3, strokeWidth: 0 }}
+            dot={{ fill: '#4f46e5', r: 3, strokeWidth: 0 }}
             activeDot={{ r: 5, strokeWidth: 0 }}
             connectNulls={false}
             legendType="none"

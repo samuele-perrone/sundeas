@@ -113,35 +113,34 @@ export default async function DashboardPage() {
     }
   }
 
-  // Snapshots: keep only the LAST balance per account per month (snapshots ordered ASC)
-  const accountByMonth: Record<string, Record<string, number>> = {}
   const accountTypeMap: Record<string, string> = {}
   for (const acc of accounts ?? []) accountTypeMap[acc.id] = acc.type
 
+  // Group snapshots by exact timestamp — each "Snapshot now" is one event where
+  // all accounts share the same snapshotted_at value, so each becomes a chart point.
+  const snapshotsByTs: Record<string, Record<string, number>> = {}
   for (const snap of snapshots ?? []) {
     if (!includeIds.has(snap.account_id)) continue
-    const month = snap.snapshotted_at.slice(0, 7)
-    if (!accountByMonth[snap.account_id]) accountByMonth[snap.account_id] = {}
-    accountByMonth[snap.account_id][month] = Number(snap.balance)
+    if (!snapshotsByTs[snap.snapshotted_at]) snapshotsByTs[snap.snapshotted_at] = {}
+    snapshotsByTs[snap.snapshotted_at][snap.account_id] = Number(snap.balance)
   }
 
-  // Derive byMonth and typeByMonth from the already-deduplicated accountByMonth so that
-  // multiple snapshots for the same account in the same month are never double-counted.
-  const byMonth: Record<string, number> = {}
-  const typeByMonth: Record<string, Record<string, number>> = {}
-  for (const [accId, months] of Object.entries(accountByMonth)) {
-    const type = accountTypeMap[accId]
-    for (const [month, bal] of Object.entries(months)) {
-      byMonth[month] = (byMonth[month] ?? 0) + bal
+  const allSnapshotTs = Object.keys(snapshotsByTs).sort()
+  const lastSnapshotTs = allSnapshotTs.at(-1)
+
+  // Per-event totals for the chart
+  const byTs: Record<string, number> = {}
+  const typeByTs: Record<string, Record<string, number>> = {}
+  for (const ts of allSnapshotTs) {
+    for (const [accId, bal] of Object.entries(snapshotsByTs[ts])) {
+      byTs[ts] = (byTs[ts] ?? 0) + bal
+      const type = accountTypeMap[accId]
       if (type) {
-        if (!typeByMonth[type]) typeByMonth[type] = {}
-        typeByMonth[type][month] = (typeByMonth[type][month] ?? 0) + bal
+        if (!typeByTs[type]) typeByTs[type] = {}
+        typeByTs[type][ts] = (typeByTs[type][ts] ?? 0) + bal
       }
     }
   }
-
-  const allHistMonths = [...new Set(Object.values(accountByMonth).flatMap(m => Object.keys(m)))].sort()
-  const lastHistMonth = allHistMonths.at(-1)
 
   const includedAccounts = (accounts ?? []).filter(a => a.include_in_net_worth)
 
@@ -158,21 +157,17 @@ export default async function DashboardPage() {
     color: TYPE_COLORS[type] ?? '#6b7280',
   }))
 
-  // Last known balance per account (from last snapshot, or current balance)
+  // Last known balance per account (from most recent snapshot, or current balance)
   const accountLastBalance: Record<string, number> = {}
   for (const acc of includedAccounts) {
-    const months = accountByMonth[acc.id]
-    if (months && Object.keys(months).length > 0) {
-      const sorted = Object.keys(months).sort()
-      accountLastBalance[acc.id] = months[sorted[sorted.length - 1]]
-    } else {
-      accountLastBalance[acc.id] = acc.balance ?? 0
-    }
+    const accTss = allSnapshotTs.filter(ts => snapshotsByTs[ts][acc.id] !== undefined)
+    accountLastBalance[acc.id] = accTss.length > 0
+      ? snapshotsByTs[accTss.at(-1)!][acc.id]
+      : (acc.balance ?? 0)
   }
 
   const now = new Date()
-  const projStartStr = lastHistMonth ?? now.toISOString().slice(0, 7)
-  const projStartDate = new Date(projStartStr + '-01')
+  const projStartDate = lastSnapshotTs ? new Date(lastSnapshotTs) : now
 
   // How many projected months have already passed (last snapshot → today)
   // These render as solid extension of the historical line, not dotted.
@@ -186,15 +181,20 @@ export default async function DashboardPage() {
   type ChartPoint = Record<string, string | number | undefined>
   const chartData: ChartPoint[] = []
 
-  // Historical points — one value per category per month
-  for (const month of allHistMonths) {
-    const point: ChartPoint = {
-      label: new Date(month + '-01').toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }),
-      netWorth: byMonth[month],
-    }
+  // Historical points — one per snapshot event (distinct timestamp)
+  // If multiple snapshots exist on the same day, include time in the label.
+  const dayCount: Record<string, number> = {}
+  for (const ts of allSnapshotTs) dayCount[ts.slice(0, 10)] = (dayCount[ts.slice(0, 10)] ?? 0) + 1
+
+  for (const ts of allSnapshotTs) {
+    const d = new Date(ts)
+    const label = dayCount[ts.slice(0, 10)] > 1
+      ? d.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/London' })
+      : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit', timeZone: 'Europe/London' })
+    const point: ChartPoint = { label, netWorth: Math.round(byTs[ts]) }
     for (const type of Object.keys(typeAccounts)) {
-      if (typeByMonth[type]?.[month] !== undefined) {
-        point[`h_${type}`] = typeByMonth[type][month]
+      if (typeByTs[type]?.[ts] !== undefined) {
+        point[`h_${type}`] = Math.round(typeByTs[type][ts])
       }
     }
     chartData.push(point)
@@ -252,7 +252,7 @@ export default async function DashboardPage() {
     : null
 
   // Anchor at today if no history but something to project
-  if (allHistMonths.length === 0 && hasProjection) {
+  if (allSnapshotTs.length === 0 && hasProjection) {
     const todayLabel = now.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
     const point: ChartPoint = { label: todayLabel, netWorth, projected: netWorth }
     for (const [type, accs] of Object.entries(typeAccounts)) {
@@ -266,7 +266,7 @@ export default async function DashboardPage() {
   // Bridge last historical point into the projection only when the snapshot is
   // in the current month (monthsBehind === 0). Otherwise the projection loop
   // handles the solid extension up to today and bridges there.
-  if (allHistMonths.length > 0 && hasProjection && monthsBehind === 0) {
+  if (allSnapshotTs.length > 0 && hasProjection && monthsBehind === 0) {
     const last = chartData[chartData.length - 1]
     last.projected = last.netWorth
     for (const [type, accs] of Object.entries(typeAccounts)) {
@@ -324,7 +324,7 @@ export default async function DashboardPage() {
       }
 
       const fallback = Math.round(
-        (lastHistMonth ? (byMonth[lastHistMonth] ?? netWorth) : netWorth) + monthlyNet * m
+        (lastSnapshotTs ? (byTs[lastSnapshotTs] ?? netWorth) : netWorth) + monthlyNet * m
       )
 
       if (m <= monthsBehind) {
