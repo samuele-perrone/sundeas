@@ -51,7 +51,7 @@ export default async function AdvisorPage() {
   const completed = Object.values(done).filter(Boolean).length
 
   return (
-    <div className="p-10 max-w-lg">
+    <div className="px-4 py-6 md:p-10 max-w-lg">
       <div className="flex items-center gap-3 mb-6">
         <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0">
           <MessageSquare className="w-5 h-5 text-primary" aria-hidden="true" />

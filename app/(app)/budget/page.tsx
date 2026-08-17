@@ -57,7 +57,7 @@ export default async function BudgetPage() {
   const sortedCats = Object.entries(byCat).sort((a, b) => b[1] - a[1])
 
   return (
-    <div className="p-10 max-w-4xl space-y-8">
+    <div className="px-4 py-6 md:p-10 max-w-4xl space-y-8">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Budget & cash flow</h1>
         <p className="text-sm text-muted-foreground mt-1">Recurring payments, spending patterns, and monthly flow</p>

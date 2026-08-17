@@ -31,7 +31,7 @@ export default async function PlanPage() {
     ? calcRequiredMonthlySaving(netWorth, targetLumpSum, yearsLeft) : null
 
   return (
-    <div className="p-10 max-w-3xl space-y-6">
+    <div className="px-4 py-6 md:p-10 max-w-3xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Retirement plan</h1>
         <p className="text-sm text-muted-foreground mt-1">Track your progress to financial independence</p>

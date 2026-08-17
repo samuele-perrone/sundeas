@@ -44,7 +44,7 @@ export default async function AccountsPage() {
   }
 
   return (
-    <div className="p-10 max-w-3xl">
+    <div className="px-4 py-6 md:p-10 max-w-3xl">
 
       {/* Header */}
       <div className="flex items-end justify-between mb-10">

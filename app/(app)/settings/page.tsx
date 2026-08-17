@@ -9,7 +9,7 @@ export default async function SettingsPage() {
   const { data: { user } } = await supabase.auth.getUser()
 
   return (
-    <div className="p-10 max-w-3xl">
+    <div className="px-4 py-6 md:p-10 max-w-3xl">
       <h1 className="text-3xl font-bold tracking-tight mb-1">My Account</h1>
       <p className="text-sm text-muted-foreground mb-10">Manage your profile and data</p>
 

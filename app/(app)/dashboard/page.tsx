@@ -385,7 +385,7 @@ export default async function DashboardPage() {
   }
 
   return (
-    <div className="p-10 max-w-4xl space-y-6">
+    <div className="px-4 py-6 md:p-10 max-w-4xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
         <p className="text-sm text-muted-foreground mt-1">Your financial snapshot</p>
@@ -475,7 +475,7 @@ export default async function DashboardPage() {
             })()}
 
             {/* Two-column breakdown */}
-            <div className="grid grid-cols-2 gap-x-6 gap-y-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
               <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide mb-1">IN</p>
               <p className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-1">OUT</p>
               {Array.from({ length: Math.max(incomeByCategory.length, expenseByCategory.length) }).map((_, i) => (

@@ -207,7 +207,7 @@ export default function AccountRow({ acc }: { acc: Account }) {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="edit-name">Account name</Label>
                 <Input
@@ -234,7 +234,7 @@ export default function AccountRow({ acc }: { acc: Account }) {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="edit-balance">Balance (£)</Label>
                 <Input

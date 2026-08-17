@@ -77,7 +77,7 @@ export default function BackupSection() {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {/* Export */}
         <div className="border rounded-xl p-4 space-y-3">
           <div className="flex items-center gap-2">

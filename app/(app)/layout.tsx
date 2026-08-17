@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import SignOutButton from '@/app/components/SignOutButton'
 import AppNav from '@/app/components/AppNav'
+import MobileNav from '@/app/components/MobileNav'
 import RetirementWidget from '@/app/components/RetirementWidget'
 import { Providers } from '@/app/components/Providers'
 import type { Metadata } from 'next'
@@ -35,8 +36,27 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen flex bg-background">
+      {/* Mobile top bar */}
+      <div className="md:hidden fixed top-0 inset-x-0 z-50 h-14 flex items-center px-4 bg-sidebar border-b border-white/10">
+        <Link href="/dashboard" className="flex items-center gap-2.5">
+          <svg viewBox="0 0 100 100" className="w-7 h-7 shrink-0" aria-hidden="true">
+            <rect width="100" height="100" rx="22" fill="white" fillOpacity="0.12"/>
+            <g transform="translate(50,52)">
+              <path d="M-22 4 A22 22 0 0 1 22 4 Z" fill="white"/>
+              <g stroke="white" strokeWidth="3" strokeLinecap="round" fill="none">
+                <line x1="0" y1="-34" x2="0" y2="-26"/>
+                <line x1="-24" y1="-24" x2="-19" y2="-18"/>
+                <line x1="24" y1="-24" x2="19" y2="-18"/>
+                <line x1="-30" y1="10" x2="30" y2="10"/>
+              </g>
+            </g>
+          </svg>
+          <span className="text-lg font-bold tracking-tight text-white">Sundeas</span>
+        </Link>
+      </div>
+
       <aside
-        className="w-64 shrink-0 flex flex-col bg-sidebar h-screen sticky top-0 overflow-hidden"
+        className="hidden md:flex w-64 shrink-0 flex-col bg-sidebar h-screen sticky top-0 overflow-hidden"
         aria-label="Main navigation"
       >
         {/* Logo */}
@@ -84,9 +104,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
 
-      <main className="flex-1 min-h-screen overflow-y-auto">
+      <main className="flex-1 min-h-screen overflow-y-auto pt-14 md:pt-0 pb-20 md:pb-0">
         <Providers>{children}</Providers>
       </main>
+
+      <MobileNav role={profile.role} />
     </div>
   )
 }

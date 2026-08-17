@@ -112,7 +112,7 @@ export default function GoalForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5" aria-label="Retirement goal form">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="goal-dob">Date of birth</Label>
           <Input
@@ -165,7 +165,7 @@ export default function GoalForm({
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-4 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
           <div className="space-y-2">
             <Label htmlFor="goal-monthly">Monthly income target (£)</Label>
             <Input

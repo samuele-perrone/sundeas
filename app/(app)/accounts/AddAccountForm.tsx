@@ -63,7 +63,7 @@ export default function AddAccountForm({ userId }: { userId: string }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-2">
       {/* Row 1: Institution · Name · Type */}
-      <div className="grid grid-cols-[1fr_1fr_1fr] gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <Input
           ref={firstRef}
           placeholder="Institution (optional)"
@@ -91,7 +91,7 @@ export default function AddAccountForm({ userId }: { userId: string }) {
       </div>
 
       {/* Row 2: Balance · Rate · Add */}
-      <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
+      <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2 items-center">
         <div className="relative">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">£</span>
           <Input
