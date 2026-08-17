@@ -171,9 +171,17 @@ export default async function DashboardPage() {
   }
 
   const now = new Date()
-  const projMonths = Math.min((yearsLeft ?? 10) * 12, 120)
   const projStartStr = lastHistMonth ?? now.toISOString().slice(0, 7)
   const projStartDate = new Date(projStartStr + '-01')
+
+  // How many projected months have already passed (last snapshot → today)
+  // These render as solid extension of the historical line, not dotted.
+  const monthsBehind = Math.max(0,
+    (now.getFullYear() - projStartDate.getFullYear()) * 12 +
+    (now.getMonth() - projStartDate.getMonth())
+  )
+  // Total projection: past-extension + future
+  const projMonths = monthsBehind + Math.min((yearsLeft ?? 10) * 12, 120)
 
   type ChartPoint = Record<string, string | number | undefined>
   const chartData: ChartPoint[] = []
@@ -255,8 +263,10 @@ export default async function DashboardPage() {
     chartData.push(point)
   }
 
-  // Bridge last historical point into the projection
-  if (allHistMonths.length > 0 && hasProjection) {
+  // Bridge last historical point into the projection only when the snapshot is
+  // in the current month (monthsBehind === 0). Otherwise the projection loop
+  // handles the solid extension up to today and bridges there.
+  if (allHistMonths.length > 0 && hasProjection && monthsBehind === 0) {
     const last = chartData[chartData.length - 1]
     last.projected = last.netWorth
     for (const [type, accs] of Object.entries(typeAccounts)) {
@@ -264,8 +274,10 @@ export default async function DashboardPage() {
     }
   }
 
-  // Project forward — running balance simulation per account so annual payments
-  // land as a full spike in the correct calendar month instead of being smoothed.
+  // Project forward using a running balance simulation.
+  // Months between last snapshot and today (m <= monthsBehind) render as a
+  // solid extension of the historical line. Months after today (m > monthsBehind)
+  // render as a dotted prediction.
   if (hasProjection) {
     const runningBalance: Record<string, number> = {}
     for (const acc of includedAccounts) {
@@ -287,17 +299,14 @@ export default async function DashboardPage() {
         if (runningBalance[acc.id] < 0 && rawDelta < 0) delta = -rawDelta
         if (acc.type === 'mortgage' && rawDelta === 0) delta += externalMortgagePayment
 
-        // Compound interest + regular monthly delta
         runningBalance[acc.id] = runningBalance[acc.id] * (1 + rate) + delta
 
-        // Apply annual lump sums that fall in this calendar month
         for (const annual of (annualByAccount[acc.id] ?? [])) {
           if (annual.month === calMonth) {
             const sign = annual.type === 'income' ? 1 : -1
             runningBalance[acc.id] += sign * annual.amount
           }
         }
-        // Annual transfers to another account
         for (const [fromId, annuals] of Object.entries(annualByAccount)) {
           for (const annual of annuals) {
             if (annual.type === 'transfer' && annual.to_account_id === acc.id && annual.month === calMonth) {
@@ -314,14 +323,36 @@ export default async function DashboardPage() {
         }
       }
 
-      for (const [type, accs] of Object.entries(typeAccounts)) {
-        const typeVal = accs.reduce((sum, acc) => sum + runningBalance[acc.id], 0)
-        point[`p_${type}`] = Math.round(typeVal)
-        total += typeVal
-      }
-      point.projected = Math.round(total) || Math.round(
+      const fallback = Math.round(
         (lastHistMonth ? (byMonth[lastHistMonth] ?? netWorth) : netWorth) + monthlyNet * m
       )
+
+      if (m <= monthsBehind) {
+        // Past months since last snapshot: solid extension of historical line
+        for (const [type, accs] of Object.entries(typeAccounts)) {
+          const typeVal = accs.reduce((sum, acc) => sum + runningBalance[acc.id], 0)
+          point[`h_${type}`] = Math.round(typeVal)
+          total += typeVal
+        }
+        point.netWorth = Math.round(total) || fallback
+
+        if (m === monthsBehind) {
+          // Today: bridge — also start the dotted line here
+          point.projected = point.netWorth
+          for (const [type, accs] of Object.entries(typeAccounts)) {
+            point[`p_${type}`] = point[`h_${type}`]
+          }
+        }
+      } else {
+        // Future months: dotted prediction
+        for (const [type, accs] of Object.entries(typeAccounts)) {
+          const typeVal = accs.reduce((sum, acc) => sum + runningBalance[acc.id], 0)
+          point[`p_${type}`] = Math.round(typeVal)
+          total += typeVal
+        }
+        point.projected = Math.round(total) || fallback
+      }
+
       chartData.push(point)
     }
   }
@@ -377,10 +408,10 @@ export default async function DashboardPage() {
           <NetWorthChart data={chartData} accountSeries={categorySeries} />
           <div className="border-t border-border pt-3 space-y-1">
             <p className="text-xs text-muted-foreground">
-              <span className="font-medium text-foreground">Solid lines</span> — actual balance snapshots you&apos;ve taken. Take a snapshot each month to build up real history.
+              <span className="font-medium text-foreground">Solid lines</span> — real data from your snapshots, extended to today using your rates and recurring payments.
             </p>
             <p className="text-xs text-muted-foreground">
-              <span className="font-medium text-foreground">Dashed lines</span> — projection from your last snapshot using each account&apos;s interest rate (compounded monthly) and your recurring payments.
+              <span className="font-medium text-foreground">Dashed lines</span> — projection from today using each account&apos;s interest rate (compounded monthly) and your recurring payments.
             </p>
             <p className="text-xs text-muted-foreground">
               The <span className="font-medium text-foreground">time filter</span> (1M / 3M / 6M / 1Y / Retirement) controls how far ahead the projection is shown — history always displays in full.
