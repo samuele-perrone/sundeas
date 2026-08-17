@@ -59,6 +59,8 @@ export async function syncT212(supabase: any, connectionId: string, userId: stri
   if (!conn?.api_key) throw new Error('Connection not found')
 
   const base = conn.institution_id === 'demo' ? DEMO_BASE : LIVE_BASE
+  // institution_id: 'demo' → demo ISA, 'invest' → live Invest, anything else → live ISA
+  const accountType = conn.institution_id === 'invest' ? 'investment' : 'isa'
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cash = await t212Get('/equity/account/cash', conn.api_key, base) as any
   const totalBalance = cash.total
@@ -77,7 +79,7 @@ export async function syncT212(supabase: any, connectionId: string, userId: stri
       truelayer_account_id: 'trading212-equity',
       institution_name: 'Trading 212',
       name: conn.institution_id === 'demo' ? 'Trading 212 (Demo)' : 'Trading 212',
-      type: 'investment',
+      type: accountType,
       currency: 'GBP',
       balance: totalBalance,
       interest_rate: returnRate,

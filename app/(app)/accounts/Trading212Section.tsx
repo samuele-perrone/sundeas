@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { RefreshCw, Link2Off, TrendingUp } from 'lucide-react'
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -16,7 +17,7 @@ import { createClient } from '@/lib/supabase/client'
 import { formatGBP } from '@/lib/finance'
 
 type Connection = { id: string; last_synced_at: string | null }
-type Account = { id: string; name: string; balance: number | null; interest_rate: number | null }
+type Account = { id: string; name: string; type: string; balance: number | null; interest_rate: number | null }
 
 function fmtSync(iso: string) {
   return new Date(iso).toLocaleString('en-GB', {
@@ -34,6 +35,7 @@ export default function Trading212Section({
   const router = useRouter()
   const [keyId, setKeyId] = useState('')
   const [secret, setSecret] = useState('')
+  const [accountType, setAccountType] = useState<'isa' | 'invest'>('isa')
   const [connecting, setConnecting] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null)
@@ -48,7 +50,7 @@ export default function Trading212Section({
       const res = await fetch('/api/trading212/connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keyId, secret }),
+        body: JSON.stringify({ keyId, secret, accountType }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed')
@@ -140,7 +142,9 @@ export default function Trading212Section({
                 <div className="flex items-center justify-between px-6 py-4">
                   <div>
                     <p className="text-sm font-medium">{account.name}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Investment portfolio</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {account.type === 'investment' ? 'Invest account' : 'Stocks & Shares ISA'}
+                    </p>
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-semibold tabular-nums">{formatGBP(account.balance ?? 0)}</p>
@@ -175,6 +179,18 @@ export default function Trading212Section({
                 </ol>
               </div>
               <form onSubmit={connect} className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="t212-account-type">Account type</Label>
+                  <Select value={accountType} onValueChange={v => setAccountType(v as 'isa' | 'invest')}>
+                    <SelectTrigger id="t212-account-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="isa">Stocks &amp; Shares ISA</SelectItem>
+                      <SelectItem value="invest">Invest account</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="t212-key-id">API Key ID</Label>
                   <Input

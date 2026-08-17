@@ -7,11 +7,19 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { keyId, secret } = await req.json()
+  const { keyId, secret, accountType } = await req.json()
   if (!secret?.trim()) return NextResponse.json({ error: 'Secret key required' }, { status: 400 })
+
+  const resolvedType: 'isa' | 'invest' = accountType === 'invest' ? 'invest' : 'isa'
 
   try {
     const { mode, authHeader } = await detectMode(keyId ?? '', secret)
+
+    // institution_id encodes both mode and account type:
+    //   'demo'   → demo mode (assume ISA for demo)
+    //   'isa'    → live Stocks & Shares ISA
+    //   'invest' → live Invest account
+    const institutionId = mode === 'demo' ? 'demo' : resolvedType
 
     await supabase.from('connections').delete().eq('user_id', user.id).eq('provider', 'trading212')
 
@@ -21,8 +29,8 @@ export async function POST(req: NextRequest) {
         user_id: user.id,
         provider: 'trading212',
         institution_name: 'Trading 212',
-        institution_id: mode,
-        api_key: authHeader, // store the exact format that worked
+        institution_id: institutionId,
+        api_key: authHeader,
       })
       .select('id')
       .single()
