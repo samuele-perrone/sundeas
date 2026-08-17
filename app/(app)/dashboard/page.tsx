@@ -12,6 +12,16 @@ import { ArrowRight, TrendingUp, PiggyBank, Target, LineChart, MessageCircle, Ch
 import NetWorthChart, { type AccountSeries } from './NetWorthChart'
 import SnapshotButton from './SnapshotButton'
 
+const INCOME_CAT: Record<string, string> = {
+  salary: 'Salary', dividends: 'Dividends', rental: 'Rental', pension: 'Pension',
+  freelance: 'Freelance', benefits: 'Benefits', other: 'Other income',
+}
+const EXPENSE_CAT: Record<string, string> = {
+  rent: 'Rent', mortgage: 'Mortgage', bills: 'Bills', subscriptions: 'Subscriptions',
+  insurance: 'Insurance', direct_debit: 'Direct debits', transport: 'Transport',
+  childcare: 'Childcare', other: 'Other expenses',
+}
+
 const TYPE_LABELS: Record<string, string> = {
   current: 'Current', savings: 'Savings', isa: 'ISAs', pension: 'Pensions',
   investment: 'Investments', mortgage: 'Mortgages', credit_card: 'Credit cards', other: 'Other',
@@ -84,6 +94,24 @@ export default async function DashboardPage() {
   const monthlyExpenses = allRecurring.filter(r => r.type === 'expense').reduce((s, r) => s + toMonthlyAmount(r.amount, r.frequency), 0)
   const monthlyNet = monthlyIncome - monthlyExpenses
 
+  // Cash flow breakdown by category (genuine in/out, separate from transfers)
+  const groupByCategory = (type: string) =>
+    Object.entries(
+      allRecurring
+        .filter(r => r.type === type)
+        .reduce<Record<string, number>>((acc, r) => {
+          const cat = r.category ?? 'other'
+          acc[cat] = (acc[cat] ?? 0) + toMonthlyAmount(r.amount, r.frequency)
+          return acc
+        }, {})
+    ).sort((a, b) => b[1] - a[1])
+
+  const incomeByCategory = groupByCategory('income')
+  const expenseByCategory = groupByCategory('expense')
+  const transferMonthly = allRecurring
+    .filter(r => r.type === 'transfer')
+    .reduce((s, r) => s + toMonthlyAmount(r.amount, r.frequency), 0)
+
   const includeIds = new Set((accounts ?? []).filter(a => a.include_in_net_worth).map(a => a.id))
 
   // Per-account base monthly delta — excludes annual payments with a known month (handled per-month in projection)
@@ -116,31 +144,32 @@ export default async function DashboardPage() {
   const accountTypeMap: Record<string, string> = {}
   for (const acc of accounts ?? []) accountTypeMap[acc.id] = acc.type
 
-  // Group snapshots by exact timestamp — each "Snapshot now" is one event where
-  // all accounts share the same snapshotted_at value, so each becomes a chart point.
-  const snapshotsByTs: Record<string, Record<string, number>> = {}
-  for (const snap of snapshots ?? []) {
+  // Group snapshots by calendar month — latest balance per account per month wins.
+  // Multiple snapshots in the same month accumulate in the DB (no deletion),
+  // but the chart shows one data point per month using the most recent reading.
+  const accountByMonth: Record<string, Record<string, number>> = {}
+  for (const snap of (snapshots ?? []).sort((a, b) => a.snapshotted_at.localeCompare(b.snapshotted_at))) {
     if (!includeIds.has(snap.account_id)) continue
-    if (!snapshotsByTs[snap.snapshotted_at]) snapshotsByTs[snap.snapshotted_at] = {}
-    snapshotsByTs[snap.snapshotted_at][snap.account_id] = Number(snap.balance)
+    const month = snap.snapshotted_at.slice(0, 7)
+    if (!accountByMonth[snap.account_id]) accountByMonth[snap.account_id] = {}
+    accountByMonth[snap.account_id][month] = Number(snap.balance)
   }
 
-  const allSnapshotTs = Object.keys(snapshotsByTs).sort()
-  const lastSnapshotTs = allSnapshotTs.at(-1)
-
-  // Per-event totals for the chart
-  const byTs: Record<string, number> = {}
-  const typeByTs: Record<string, Record<string, number>> = {}
-  for (const ts of allSnapshotTs) {
-    for (const [accId, bal] of Object.entries(snapshotsByTs[ts])) {
-      byTs[ts] = (byTs[ts] ?? 0) + bal
-      const type = accountTypeMap[accId]
+  const byMonth: Record<string, number> = {}
+  const typeByMonth: Record<string, Record<string, number>> = {}
+  for (const [accId, months] of Object.entries(accountByMonth)) {
+    const type = accountTypeMap[accId]
+    for (const [month, bal] of Object.entries(months)) {
+      byMonth[month] = (byMonth[month] ?? 0) + bal
       if (type) {
-        if (!typeByTs[type]) typeByTs[type] = {}
-        typeByTs[type][ts] = (typeByTs[type][ts] ?? 0) + bal
+        if (!typeByMonth[type]) typeByMonth[type] = {}
+        typeByMonth[type][month] = (typeByMonth[type][month] ?? 0) + bal
       }
     }
   }
+
+  const allSnapshotTs = [...new Set(Object.values(accountByMonth).flatMap(m => Object.keys(m)))].sort()
+  const lastSnapshotTs = allSnapshotTs.at(-1)
 
   const includedAccounts = (accounts ?? []).filter(a => a.include_in_net_worth)
 
@@ -157,17 +186,20 @@ export default async function DashboardPage() {
     color: TYPE_COLORS[type] ?? '#6b7280',
   }))
 
-  // Last known balance per account (from most recent snapshot, or current balance)
+  // Last known balance per account (from last snapshot month, or current balance)
   const accountLastBalance: Record<string, number> = {}
   for (const acc of includedAccounts) {
-    const accTss = allSnapshotTs.filter(ts => snapshotsByTs[ts][acc.id] !== undefined)
-    accountLastBalance[acc.id] = accTss.length > 0
-      ? snapshotsByTs[accTss.at(-1)!][acc.id]
-      : (acc.balance ?? 0)
+    const months = accountByMonth[acc.id]
+    if (months && Object.keys(months).length > 0) {
+      const sorted = Object.keys(months).sort()
+      accountLastBalance[acc.id] = months[sorted[sorted.length - 1]]
+    } else {
+      accountLastBalance[acc.id] = acc.balance ?? 0
+    }
   }
 
   const now = new Date()
-  const projStartDate = lastSnapshotTs ? new Date(lastSnapshotTs) : now
+  const projStartDate = lastSnapshotTs ? new Date(lastSnapshotTs + '-01') : now
 
   // How many projected months have already passed (last snapshot → today)
   // These render as solid extension of the historical line, not dotted.
@@ -181,20 +213,15 @@ export default async function DashboardPage() {
   type ChartPoint = Record<string, string | number | undefined>
   const chartData: ChartPoint[] = []
 
-  // Historical points — one per snapshot event (distinct timestamp)
-  // If multiple snapshots exist on the same day, include time in the label.
-  const dayCount: Record<string, number> = {}
-  for (const ts of allSnapshotTs) dayCount[ts.slice(0, 10)] = (dayCount[ts.slice(0, 10)] ?? 0) + 1
-
-  for (const ts of allSnapshotTs) {
-    const d = new Date(ts)
-    const label = dayCount[ts.slice(0, 10)] > 1
-      ? d.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/London' })
-      : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit', timeZone: 'Europe/London' })
-    const point: ChartPoint = { label, netWorth: Math.round(byTs[ts]) }
+  // Historical points — one per calendar month (latest snapshot reading for that month)
+  for (const month of allSnapshotTs) {
+    const point: ChartPoint = {
+      label: new Date(month + '-01').toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }),
+      netWorth: Math.round(byMonth[month]),
+    }
     for (const type of Object.keys(typeAccounts)) {
-      if (typeByTs[type]?.[ts] !== undefined) {
-        point[`h_${type}`] = Math.round(typeByTs[type][ts])
+      if (typeByMonth[type]?.[month] !== undefined) {
+        point[`h_${type}`] = Math.round(typeByMonth[type][month])
       }
     }
     chartData.push(point)
@@ -324,7 +351,7 @@ export default async function DashboardPage() {
       }
 
       const fallback = Math.round(
-        (lastSnapshotTs ? (byTs[lastSnapshotTs] ?? netWorth) : netWorth) + monthlyNet * m
+        (lastSnapshotTs ? (byMonth[lastSnapshotTs] ?? netWorth) : netWorth) + monthlyNet * m
       )
 
       if (m <= monthsBehind) {
@@ -599,6 +626,83 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Cash flow */}
+      {allRecurring.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+              Monthly Cash Flow
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Proportional bar */}
+            {(monthlyIncome > 0 || monthlyExpenses > 0) && (() => {
+              const barTotal = monthlyIncome + monthlyExpenses
+              const inPct = barTotal > 0 ? (monthlyIncome / barTotal) * 100 : 50
+              return (
+                <div className="space-y-1.5">
+                  <div className="h-2.5 rounded-full overflow-hidden flex">
+                    <div className="bg-emerald-500" style={{ width: `${inPct}%` }} />
+                    <div className="bg-red-400 flex-1" />
+                  </div>
+                  <div className="flex justify-between text-xs font-medium">
+                    <span className="text-emerald-600">+{formatGBP(monthlyIncome)}/mo</span>
+                    <span className="text-destructive">-{formatGBP(monthlyExpenses)}/mo</span>
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* Two-column breakdown */}
+            <div className="grid grid-cols-2 gap-x-6 gap-y-1">
+              <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide mb-1">IN</p>
+              <p className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-1">OUT</p>
+              {Array.from({ length: Math.max(incomeByCategory.length, expenseByCategory.length) }).map((_, i) => (
+                <>
+                  {incomeByCategory[i] ? (
+                    <div key={`in-${i}`} className="flex items-baseline justify-between gap-1 py-0.5">
+                      <span className="text-xs text-muted-foreground truncate">{INCOME_CAT[incomeByCategory[i][0]] ?? incomeByCategory[i][0]}</span>
+                      <span className="text-xs font-medium tabular-nums shrink-0">{formatGBP(incomeByCategory[i][1])}</span>
+                    </div>
+                  ) : <div key={`in-empty-${i}`} />}
+                  {expenseByCategory[i] ? (
+                    <div key={`out-${i}`} className="flex items-baseline justify-between gap-1 py-0.5">
+                      <span className="text-xs text-muted-foreground truncate">{EXPENSE_CAT[expenseByCategory[i][0]] ?? expenseByCategory[i][0]}</span>
+                      <span className="text-xs font-medium tabular-nums shrink-0">{formatGBP(expenseByCategory[i][1])}</span>
+                    </div>
+                  ) : <div key={`out-empty-${i}`} />}
+                </>
+              ))}
+            </div>
+
+            {/* Transfers */}
+            {transferMonthly > 0 && (
+              <>
+                <Separator />
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium">Internal transfers</p>
+                    <p className="text-xs text-muted-foreground">Moving between your own accounts</p>
+                  </div>
+                  <span className="text-sm font-semibold text-indigo-600 tabular-nums">{formatGBP(transferMonthly)}/mo</span>
+                </div>
+              </>
+            )}
+
+            <Separator />
+
+            {/* Net */}
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold">Net</p>
+              <p className={`text-lg font-bold tabular-nums ${monthlyNet >= 0 ? 'text-emerald-600' : 'text-destructive'}`}>
+                {monthlyNet >= 0 ? '+' : ''}{formatGBP(monthlyNet)}
+                <span className="text-xs font-normal text-muted-foreground">/mo</span>
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Action items */}
       <Card>
