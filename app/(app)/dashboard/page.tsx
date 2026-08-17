@@ -108,9 +108,9 @@ export default async function DashboardPage() {
 
   const incomeByCategory = groupByCategory('income')
   const expenseByCategory = groupByCategory('expense')
-  const transferMonthly = allRecurring
-    .filter(r => r.type === 'transfer')
-    .reduce((s, r) => s + toMonthlyAmount(r.amount, r.frequency), 0)
+  const transfers = allRecurring.filter(r => r.type === 'transfer')
+  const transferMonthly = transfers.reduce((s, r) => s + toMonthlyAmount(r.amount, r.frequency), 0)
+  const accountMap = Object.fromEntries((accounts ?? []).map(a => [a.id, a.name]))
 
   const includeIds = new Set((accounts ?? []).filter(a => a.include_in_net_worth).map(a => a.id))
 
@@ -447,6 +447,95 @@ export default async function DashboardPage() {
         </CardContent>
       </Card>
 
+      {/* Cash flow */}
+      {allRecurring.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+              Monthly Cash Flow
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Proportional bar */}
+            {(monthlyIncome > 0 || monthlyExpenses > 0) && (() => {
+              const barTotal = monthlyIncome + monthlyExpenses
+              const inPct = barTotal > 0 ? (monthlyIncome / barTotal) * 100 : 50
+              return (
+                <div className="space-y-1.5">
+                  <div className="h-2.5 rounded-full overflow-hidden flex">
+                    <div className="bg-emerald-500" style={{ width: `${inPct}%` }} />
+                    <div className="bg-red-400 flex-1" />
+                  </div>
+                  <div className="flex justify-between text-xs font-medium">
+                    <span className="text-emerald-600">+{formatGBP(monthlyIncome)}/mo</span>
+                    <span className="text-destructive">-{formatGBP(monthlyExpenses)}/mo</span>
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* Two-column breakdown */}
+            <div className="grid grid-cols-2 gap-x-6 gap-y-1">
+              <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide mb-1">IN</p>
+              <p className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-1">OUT</p>
+              {Array.from({ length: Math.max(incomeByCategory.length, expenseByCategory.length) }).map((_, i) => (
+                <>
+                  {incomeByCategory[i] ? (
+                    <div key={`in-${i}`} className="flex items-baseline justify-between gap-1 py-0.5">
+                      <span className="text-xs text-muted-foreground truncate">{INCOME_CAT[incomeByCategory[i][0]] ?? incomeByCategory[i][0]}</span>
+                      <span className="text-xs font-medium tabular-nums shrink-0">{formatGBP(incomeByCategory[i][1])}</span>
+                    </div>
+                  ) : <div key={`in-empty-${i}`} />}
+                  {expenseByCategory[i] ? (
+                    <div key={`out-${i}`} className="flex items-baseline justify-between gap-1 py-0.5">
+                      <span className="text-xs text-muted-foreground truncate">{EXPENSE_CAT[expenseByCategory[i][0]] ?? expenseByCategory[i][0]}</span>
+                      <span className="text-xs font-medium tabular-nums shrink-0">{formatGBP(expenseByCategory[i][1])}</span>
+                    </div>
+                  ) : <div key={`out-empty-${i}`} />}
+                </>
+              ))}
+            </div>
+
+            {/* Transfers */}
+            {transfers.length > 0 && (
+              <>
+                <Separator />
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">Transfers</p>
+                    <span className="text-xs font-medium text-indigo-600 tabular-nums">{formatGBP(transferMonthly)}/mo total</span>
+                  </div>
+                  {transfers.map(r => {
+                    const from = accountMap[r.account_id] ?? 'Unknown'
+                    const to = r.to_account_id ? (accountMap[r.to_account_id] ?? 'Unknown') : '—'
+                    return (
+                      <div key={r.id} className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium truncate">{r.name}</p>
+                          <p className="text-xs text-muted-foreground truncate">{from} → {to}</p>
+                        </div>
+                        <span className="text-xs font-medium tabular-nums shrink-0 text-indigo-600">{formatGBP(toMonthlyAmount(r.amount, r.frequency))}/mo</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+
+            <Separator />
+
+            {/* Net */}
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold">Net</p>
+              <p className={`text-lg font-bold tabular-nums ${monthlyNet >= 0 ? 'text-emerald-600' : 'text-destructive'}`}>
+                {monthlyNet >= 0 ? '+' : ''}{formatGBP(monthlyNet)}
+                <span className="text-xs font-normal text-muted-foreground">/mo</span>
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Getting started — shown when no accounts exist */}
       {(accounts ?? []).length === 0 && (
         <Card>
@@ -626,83 +715,6 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Cash flow */}
-      {allRecurring.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-              Monthly Cash Flow
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Proportional bar */}
-            {(monthlyIncome > 0 || monthlyExpenses > 0) && (() => {
-              const barTotal = monthlyIncome + monthlyExpenses
-              const inPct = barTotal > 0 ? (monthlyIncome / barTotal) * 100 : 50
-              return (
-                <div className="space-y-1.5">
-                  <div className="h-2.5 rounded-full overflow-hidden flex">
-                    <div className="bg-emerald-500" style={{ width: `${inPct}%` }} />
-                    <div className="bg-red-400 flex-1" />
-                  </div>
-                  <div className="flex justify-between text-xs font-medium">
-                    <span className="text-emerald-600">+{formatGBP(monthlyIncome)}/mo</span>
-                    <span className="text-destructive">-{formatGBP(monthlyExpenses)}/mo</span>
-                  </div>
-                </div>
-              )
-            })()}
-
-            {/* Two-column breakdown */}
-            <div className="grid grid-cols-2 gap-x-6 gap-y-1">
-              <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide mb-1">IN</p>
-              <p className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-1">OUT</p>
-              {Array.from({ length: Math.max(incomeByCategory.length, expenseByCategory.length) }).map((_, i) => (
-                <>
-                  {incomeByCategory[i] ? (
-                    <div key={`in-${i}`} className="flex items-baseline justify-between gap-1 py-0.5">
-                      <span className="text-xs text-muted-foreground truncate">{INCOME_CAT[incomeByCategory[i][0]] ?? incomeByCategory[i][0]}</span>
-                      <span className="text-xs font-medium tabular-nums shrink-0">{formatGBP(incomeByCategory[i][1])}</span>
-                    </div>
-                  ) : <div key={`in-empty-${i}`} />}
-                  {expenseByCategory[i] ? (
-                    <div key={`out-${i}`} className="flex items-baseline justify-between gap-1 py-0.5">
-                      <span className="text-xs text-muted-foreground truncate">{EXPENSE_CAT[expenseByCategory[i][0]] ?? expenseByCategory[i][0]}</span>
-                      <span className="text-xs font-medium tabular-nums shrink-0">{formatGBP(expenseByCategory[i][1])}</span>
-                    </div>
-                  ) : <div key={`out-empty-${i}`} />}
-                </>
-              ))}
-            </div>
-
-            {/* Transfers */}
-            {transferMonthly > 0 && (
-              <>
-                <Separator />
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-medium">Internal transfers</p>
-                    <p className="text-xs text-muted-foreground">Moving between your own accounts</p>
-                  </div>
-                  <span className="text-sm font-semibold text-indigo-600 tabular-nums">{formatGBP(transferMonthly)}/mo</span>
-                </div>
-              </>
-            )}
-
-            <Separator />
-
-            {/* Net */}
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold">Net</p>
-              <p className={`text-lg font-bold tabular-nums ${monthlyNet >= 0 ? 'text-emerald-600' : 'text-destructive'}`}>
-                {monthlyNet >= 0 ? '+' : ''}{formatGBP(monthlyNet)}
-                <span className="text-xs font-normal text-muted-foreground">/mo</span>
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Action items */}
       <Card>
