@@ -11,8 +11,8 @@ export async function GET(req: NextRequest) {
   const admin = createAdminClient()
   const targetUserId = req.nextUrl.searchParams.get('userId')
 
-  const query = admin.from('profiles').select('id').eq('approved', true)
-  if (targetUserId) query.eq('id', targetUserId)
+  let query = admin.from('profiles').select('id').eq('approved', true)
+  if (targetUserId) query = query.eq('id', targetUserId)
   const { data: profiles } = await query
 
   if (!profiles?.length) return NextResponse.json({ sent: 0 })
