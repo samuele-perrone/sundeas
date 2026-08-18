@@ -293,7 +293,7 @@ Rules:
   const inPct = totalFlow > 0 ? Math.round((monthlyIncome / totalFlow) * 100) : 50
   const outPct = 100 - inPct
 
-  // Type breakdown rows (exclude mortgage for visual clarity — it's negative)
+  // Type breakdown rows — table-based for email client compatibility
   const typeBreakdownHtml = Object.entries(byType)
     .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
     .map(([type, bal]) => {
@@ -302,15 +302,22 @@ Rules:
       const barWidth = netWorth !== 0 ? Math.min(100, Math.round(Math.abs(bal / netWorth) * 100)) : 0
       const isNeg = bal < 0
       return `
-      <div style="margin-bottom: 8px;">
-        <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
-          <span style="font-size: 12px; color: #475569;">${label}</span>
-          <span style="font-size: 12px; font-weight: 600; color: ${isNeg ? '#dc2626' : '#0f172a'};">${fmtGBP(bal)}</span>
-        </div>
-        <div style="height: 4px; background: #e2e8f0; border-radius: 2px;">
-          <div style="height: 4px; width: ${barWidth}%; background: ${isNeg ? '#dc2626' : color}; border-radius: 2px;"></div>
-        </div>
-      </div>`
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 10px;">
+        <tr>
+          <td style="font-size: 12px; color: #475569; padding-bottom: 3px;">${label}</td>
+          <td style="font-size: 12px; font-weight: 600; text-align: right; color: ${isNeg ? '#dc2626' : '#0f172a'}; padding-bottom: 3px;">${fmtGBP(bal)}</td>
+        </tr>
+        <tr>
+          <td colspan="2">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td width="${barWidth}%" style="height: 4px; background: ${isNeg ? '#dc2626' : color}; border-radius: 2px; line-height: 4px; font-size: 0;">&nbsp;</td>
+                <td width="${100 - barWidth}%" style="height: 4px; background: #e2e8f0; line-height: 4px; font-size: 0;">&nbsp;</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>`
     }).join('')
 
   const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
@@ -329,46 +336,57 @@ Rules:
         <p style="color: #94a3b8; font-size: 13px; margin: 0 0 20px;">${today}</p>
 
         <!-- Net worth + Retire at row -->
-        <div style="display: flex; gap: 12px; margin-bottom: 16px;">
-          <div style="flex: 1; background: #f1f5f9; border-radius: 10px; padding: 14px 18px;">
-            <p style="margin: 0 0 4px; font-size: 11px; font-weight: 500; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Net worth</p>
-            <p style="margin: 0; font-size: 22px; font-weight: 700;">${fmtGBP(netWorth)}</p>
-          </div>
-          ${retireAge ? `
-          <div style="flex: 1; background: #eef2ff; border-radius: 10px; padding: 14px 18px;">
-            <p style="margin: 0 0 4px; font-size: 11px; font-weight: 500; color: #6366f1; text-transform: uppercase; letter-spacing: 0.05em;">Retire at ${retireAge}</p>
-            ${targetLumpSum ? `
-            <p style="margin: 0; font-size: 22px; font-weight: 700; color: #4f46e5;">${progressPct}%</p>
-            <div style="height: 4px; background: #c7d2fe; border-radius: 2px; margin-top: 6px;">
-              <div style="height: 4px; width: ${progressPct}%; background: #4f46e5; border-radius: 2px;"></div>
-            </div>
-            <p style="margin: 4px 0 0; font-size: 11px; color: #6366f1;">of ${fmtGBP(targetLumpSum)} target</p>
-            ` : `<p style="margin: 0; font-size: 14px; color: #6366f1;">No target set</p>`}
-          </div>` : ''}
-        </div>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 16px;">
+          <tr>
+            <td style="background: #f1f5f9; border-radius: 10px; padding: 14px 18px; width: 48%;">
+              <p style="margin: 0 0 4px; font-size: 11px; font-weight: 500; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Net worth</p>
+              <p style="margin: 0; font-size: 22px; font-weight: 700;">${fmtGBP(netWorth)}</p>
+            </td>
+            <td style="width: 4%;"></td>
+            ${retireAge ? `
+            <td style="background: #eef2ff; border-radius: 10px; padding: 14px 18px; width: 48%;">
+              <p style="margin: 0 0 4px; font-size: 11px; font-weight: 500; color: #6366f1; text-transform: uppercase; letter-spacing: 0.05em;">Retire at ${retireAge}</p>
+              ${targetLumpSum ? `
+              <p style="margin: 0; font-size: 22px; font-weight: 700; color: #4f46e5;">${progressPct}%</p>
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-top: 6px;">
+                <tr>
+                  <td width="${progressPct}%" style="height: 4px; background: #4f46e5; border-radius: 2px; line-height: 4px; font-size: 0;">&nbsp;</td>
+                  <td width="${100 - progressPct!}%" style="height: 4px; background: #c7d2fe; line-height: 4px; font-size: 0;">&nbsp;</td>
+                </tr>
+              </table>
+              <p style="margin: 4px 0 0; font-size: 11px; color: #6366f1;">of ${fmtGBP(targetLumpSum)} target</p>
+              ` : `<p style="margin: 0; font-size: 14px; color: #6366f1;">No target set</p>`}
+            </td>` : '<td style="width: 48%;"></td>'}
+          </tr>
+        </table>
 
         <!-- Monthly Cash Flow -->
         <div style="border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px 18px; margin-bottom: 16px;">
           <p style="margin: 0 0 10px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Monthly cash flow</p>
-          <!-- IN/OUT bar -->
-          <div style="display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin-bottom: 10px;">
-            <div style="width: ${inPct}%; background: #16a34a;"></div>
-            <div style="width: ${outPct}%; background: #dc2626;"></div>
-          </div>
-          <div style="display: flex; justify-content: space-between;">
-            <div>
-              <p style="margin: 0; font-size: 11px; color: #16a34a; font-weight: 500; text-transform: uppercase;">IN</p>
-              <p style="margin: 2px 0 0; font-size: 16px; font-weight: 700; color: #16a34a;">${fmtGBP(monthlyIncome)}</p>
-            </div>
-            <div style="text-align: center;">
-              <p style="margin: 0; font-size: 11px; color: #64748b; font-weight: 500; text-transform: uppercase;">NET</p>
-              <p style="margin: 2px 0 0; font-size: 16px; font-weight: 700; color: ${monthlyNet >= 0 ? '#16a34a' : '#dc2626'};">${monthlyNet >= 0 ? '+' : ''}${fmtGBP(monthlyNet)}</p>
-            </div>
-            <div style="text-align: right;">
-              <p style="margin: 0; font-size: 11px; color: #dc2626; font-weight: 500; text-transform: uppercase;">OUT</p>
-              <p style="margin: 2px 0 0; font-size: 16px; font-weight: 700; color: #dc2626;">-${fmtGBP(monthlyExpenses)}</p>
-            </div>
-          </div>
+          <!-- IN/OUT bar — table for email client compatibility -->
+          <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 12px; border-radius: 4px; overflow: hidden;">
+            <tr>
+              <td width="${inPct}%" style="height: 8px; background: #16a34a; line-height: 8px; font-size: 0;">&nbsp;</td>
+              <td width="${outPct}%" style="height: 8px; background: #dc2626; line-height: 8px; font-size: 0;">&nbsp;</td>
+            </tr>
+          </table>
+          <!-- IN / NET / OUT figures -->
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td width="33%" style="vertical-align: top;">
+                <p style="margin: 0; font-size: 11px; color: #16a34a; font-weight: 600; text-transform: uppercase;">IN</p>
+                <p style="margin: 2px 0 0; font-size: 16px; font-weight: 700; color: #16a34a;">${fmtGBP(monthlyIncome)}</p>
+              </td>
+              <td width="34%" style="vertical-align: top; text-align: center;">
+                <p style="margin: 0; font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase;">NET</p>
+                <p style="margin: 2px 0 0; font-size: 16px; font-weight: 700; color: ${monthlyNet >= 0 ? '#16a34a' : '#dc2626'};">${monthlyNet >= 0 ? '+' : ''}${fmtGBP(monthlyNet)}</p>
+              </td>
+              <td width="33%" style="vertical-align: top; text-align: right;">
+                <p style="margin: 0; font-size: 11px; color: #dc2626; font-weight: 600; text-transform: uppercase;">OUT</p>
+                <p style="margin: 2px 0 0; font-size: 16px; font-weight: 700; color: #dc2626;">-${fmtGBP(monthlyExpenses)}</p>
+              </td>
+            </tr>
+          </table>
         </div>
 
         <!-- Net worth breakdown by type -->
