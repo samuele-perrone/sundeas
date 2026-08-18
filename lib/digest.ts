@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { toMonthlyAmount } from '@/lib/finance'
 import Anthropic from '@anthropic-ai/sdk'
 import { Resend } from 'resend'
 
@@ -33,6 +34,18 @@ const INDEX_LABELS: Record<string, string> = {
   '^GSPC': 'S&P 500',
   '^NDX': 'Nasdaq 100',
   '^FTMC': 'FTSE 250',
+}
+
+const TYPE_LABELS: Record<string, string> = {
+  current: 'Current', savings: 'Savings', isa: 'ISA',
+  pension: 'Pension', investment: 'Investment', mortgage: 'Mortgage',
+  credit_card: 'Credit card', other: 'Other',
+}
+
+const TYPE_COLORS: Record<string, string> = {
+  current: '#0891b2', savings: '#059669', isa: '#7c3aed',
+  pension: '#d97706', investment: '#0284c7', mortgage: '#dc2626',
+  credit_card: '#ea580c', other: '#6b7280',
 }
 
 async function fetchT212Portfolio(apiKey: string, mode: string): Promise<T212Position[]> {
@@ -82,42 +95,68 @@ function t212ToYahoo(ticker: string): string {
   return ticker.replace(/_(EQ|US|UK|DE|FR|NL|IT|ES|AU|CA)$/, '')
 }
 
+function fmtGBP(n: number) {
+  return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(n)
+}
+
 export async function sendDigestForUser(userId: string, email: string): Promise<void> {
   const admin = createAdminClient()
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://sundeas.com'
   const from = process.env.RESEND_FROM ?? 'Sundeas <digest@sundeas.com>'
 
-  const { data: accounts } = await admin
-    .from('accounts')
-    .select('name, institution_name, type, balance, interest_rate, include_in_net_worth')
-    .eq('user_id', userId)
-    .eq('include_in_net_worth', true)
-    .order('balance', { ascending: false })
+  const [
+    { data: accounts },
+    { data: goal },
+    { data: recurring },
+    { data: recentChats },
+    { data: t212conn },
+  ] = await Promise.all([
+    admin.from('accounts')
+      .select('id, name, institution_name, type, balance, interest_rate, include_in_net_worth')
+      .eq('user_id', userId)
+      .eq('include_in_net_worth', true)
+      .order('balance', { ascending: false }),
+    admin.from('goals')
+      .select('target_retirement_age, target_monthly_income, target_lump_sum')
+      .eq('user_id', userId)
+      .single(),
+    admin.from('recurring_payments').select('*').eq('user_id', userId),
+    admin.from('chat_messages')
+      .select('role, content, created_at')
+      .eq('user_id', userId)
+      .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+      .order('created_at', { ascending: true })
+      .limit(50),
+    admin.from('connections')
+      .select('api_key, institution_id')
+      .eq('user_id', userId)
+      .eq('provider', 'trading212')
+      .single(),
+  ])
 
   if (!accounts?.length) throw new Error('No accounts found for user')
 
-  const { data: goal } = await admin
-    .from('goals')
-    .select('target_retirement_age, target_monthly_income, target_lump_sum')
-    .eq('user_id', userId)
-    .single()
+  // ── Cash flow ──────────────────────────────────────────────────────────────
+  const allRecurring = recurring ?? []
+  const monthlyIncome = allRecurring
+    .filter(r => r.type === 'income')
+    .reduce((s, r) => s + toMonthlyAmount(r.amount, r.frequency), 0)
+  const monthlyExpenses = allRecurring
+    .filter(r => r.type === 'expense')
+    .reduce((s, r) => s + toMonthlyAmount(r.amount, r.frequency), 0)
+  const monthlyNet = monthlyIncome - monthlyExpenses
 
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-  const { data: recentChats } = await admin
-    .from('chat_messages')
-    .select('role, content, created_at')
-    .eq('user_id', userId)
-    .gte('created_at', sevenDaysAgo)
-    .order('created_at', { ascending: true })
-    .limit(30)
+  // ── Net worth & breakdown by type ──────────────────────────────────────────
+  const netWorth = accounts.reduce((s, a) => s + (a.balance ?? 0), 0)
+  const byType: Record<string, number> = {}
+  for (const a of accounts) byType[a.type] = (byType[a.type] ?? 0) + (a.balance ?? 0)
 
-  const { data: t212conn } = await admin
-    .from('connections')
-    .select('api_key, institution_id')
-    .eq('user_id', userId)
-    .eq('provider', 'trading212')
-    .single()
+  // ── Retirement progress ────────────────────────────────────────────────────
+  const retireAge = goal?.target_retirement_age
+  const targetLumpSum = goal?.target_lump_sum ?? null
+  const progressPct = targetLumpSum ? Math.min(100, Math.round((netWorth / targetLumpSum) * 100)) : null
 
+  // ── T212 portfolio ─────────────────────────────────────────────────────────
   const holdingTickers = t212conn?.api_key
     ? (await fetchT212Portfolio(t212conn.api_key, t212conn.institution_id ?? 'live'))
         .sort((a, b) => Math.abs(b.ppl) - Math.abs(a.ppl))
@@ -145,13 +184,11 @@ export async function sendDigestForUser(userId: string, email: string): Promise<
     : ''
 
   let portfolioSection = ''
-
   if (t212conn?.api_key) {
     const [t212Cash, positions] = await Promise.all([
       fetchT212Cash(t212conn.api_key, t212conn.institution_id ?? 'live'),
       fetchT212Portfolio(t212conn.api_key, t212conn.institution_id ?? 'live'),
     ])
-
     if (positions.length > 0) {
       const topPositions = positions
         .sort((a, b) => Math.abs(b.ppl) - Math.abs(a.ppl))
@@ -160,39 +197,41 @@ export async function sendDigestForUser(userId: string, email: string): Promise<
           const returnPct = p.averagePrice > 0
             ? ((p.currentPrice - p.averagePrice) / p.averagePrice * 100).toFixed(1)
             : '0'
-          return `${p.ticker}: qty ${p.quantity.toFixed(4)}, avg buy £${p.averagePrice.toFixed(2)}, now £${p.currentPrice.toFixed(2)} (${returnPct}%), P&L £${p.ppl.toFixed(2)}`
-        })
-        .join('\n')
-
+          return `${p.ticker}: qty ${p.quantity.toFixed(4)}, avg £${p.averagePrice.toFixed(2)}, now £${p.currentPrice.toFixed(2)} (${returnPct}%), P&L £${p.ppl.toFixed(2)}`
+        }).join('\n')
       portfolioSection = `
-Trading 212 Portfolio (${t212conn.institution_id ?? 'live'}):
-- Total value: £${t212Cash?.total?.toFixed(2) ?? 'N/A'}
+Trading 212 Portfolio:
+- Total: £${t212Cash?.total?.toFixed(2) ?? 'N/A'}
 - Invested: £${t212Cash?.invested?.toFixed(2) ?? 'N/A'}
 - Unrealised P&L: £${t212Cash?.ppl?.toFixed(2) ?? 'N/A'}
 - Free cash: £${t212Cash?.free?.toFixed(2) ?? 'N/A'}
-
-Top positions by P&L impact:
-${topPositions}`
+Top positions: ${topPositions}`
     }
   }
 
-  const netWorth = accounts.reduce((s, a) => s + (a.balance ?? 0), 0)
   const accountsSummary = accounts.map(a =>
-    `${a.institution_name ?? ''} ${a.name} (${a.type}): £${(a.balance ?? 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${a.interest_rate ? ` @ ${a.interest_rate}%` : ''}`
+    `${a.institution_name ?? ''} ${a.name} (${a.type}): £${(a.balance ?? 0).toLocaleString('en-GB', { minimumFractionDigits: 2 })}${a.interest_rate ? ` @ ${a.interest_rate}%` : ''}`
   ).join('\n')
 
   const goalSummary = goal
-    ? `Retirement age: ${goal.target_retirement_age ?? 'not set'}, Monthly income target: £${goal.target_monthly_income ?? 'not set'}, Lump sum target: £${goal.target_lump_sum ?? 'not set'}`
+    ? `Retire at ${goal.target_retirement_age ?? 'not set'}, income target £${goal.target_monthly_income ?? 'not set'}/mo, lump sum target £${goal.target_lump_sum ?? 'not set'}`
     : 'No retirement goal set'
 
+  // ── Build AI prompt — chat context first so it dominates recommendations ───
   const chatContext = recentChats?.length
-    ? recentChats.map(m => `${m.role === 'user' ? 'User' : 'Advisor'}: ${m.content.slice(0, 300)}`).join('\n')
+    ? recentChats.map(m => `${m.role === 'user' ? 'User' : 'Advisor'}: ${m.content.slice(0, 500)}`).join('\n')
     : null
 
-  const prompt = `You are a UK personal finance education tool. Analyse the following financial snapshot for a user and provide clear, actionable investment recommendations. Be specific and reference actual figures from their data.
+  const prompt = `You are a UK personal finance education tool. Analyse the following financial snapshot and provide 4 specific, actionable recommendations.
 
-FINANCIAL SNAPSHOT:
-Net worth (included accounts): £${netWorth.toLocaleString('en-GB', { minimumFractionDigits: 2 })}
+${chatContext ? `RECENT ADVISOR CONVERSATIONS (last 7 days):
+${chatContext}
+
+CRITICAL INSTRUCTION: The recommendations MUST directly follow up on the topics above. Do not give generic advice — tailor each recommendation to what the user has been specifically discussing. If they asked about a topic, give a concrete next step. If the advisor explained something, build on it.
+
+` : ''}FINANCIAL SNAPSHOT:
+Net worth: £${netWorth.toLocaleString('en-GB', { minimumFractionDigits: 2 })}
+Monthly income: £${monthlyIncome.toFixed(0)}/mo, expenses: £${monthlyExpenses.toFixed(0)}/mo, net: £${monthlyNet >= 0 ? '+' : ''}${monthlyNet.toFixed(0)}/mo
 
 Accounts:
 ${accountsSummary}
@@ -201,7 +240,7 @@ ${indicesSection ? `\n${indicesSection}` : ''}
 ${holdingsMarketSection ? `\n${holdingsMarketSection}` : ''}
 
 Retirement goal: ${goalSummary}
-${chatContext ? `\nRECENT ADVISOR CONVERSATIONS (last 7 days — use these to tailor recommendations to topics the user has been exploring):\n${chatContext}\n` : ''}
+
 Provide exactly 4 recommendations in JSON:
 {
   "summary": "2-sentence overall assessment",
@@ -216,18 +255,15 @@ Provide exactly 4 recommendations in JSON:
 
 Rules:
 - Reference actual account names, balances, and percentages from the data
-- If recent advisor conversations exist, prioritise topics the user has been asking about and build on that context
-- Use today's market data (indices, % moves, 52-week ranges, analyst ratings) to make recommendations timely and market-aware
-- If T212 is connected, reference specific holdings vs their 52-week range and analyst ratings where available
-- Comment on portfolio concentration, top winners/losers, and cash vs invested ratio
-- If no T212, recommend considering investment accounts if appropriate
-- Compare ISA/pension contributions to general savings
+- ${chatContext ? 'First 1-2 recommendations MUST address topics from the recent conversations' : 'Be specific to their actual data, not generic advice'}
+- Use today's market data where available to make recommendations timely
+- If T212 is connected, reference specific holdings vs their 52-week range
 - Be educational and specific — no generic advice
-- Always include the disclaimer that this is informational only, not regulated financial advice`
+- Always note this is informational only, not regulated financial advice`
 
   const message = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 1200,
+    model: 'claude-sonnet-4-6',
+    max_tokens: 1500,
     messages: [{ role: 'user', content: prompt }],
   })
 
@@ -239,10 +275,9 @@ Rules:
   const { summary, recommendations } = parsed
   if (!summary || !Array.isArray(recommendations)) throw new Error('AI response missing summary or recommendations')
 
+  // ── Build email HTML ───────────────────────────────────────────────────────
   const priorityColour: Record<string, string> = {
-    high: '#dc2626',
-    medium: '#d97706',
-    low: '#16a34a',
+    high: '#dc2626', medium: '#d97706', low: '#16a34a',
   }
 
   const recHtml = (recommendations as { title: string; detail: string; priority: string }[])
@@ -253,6 +288,31 @@ Rules:
       </div>`)
     .join('')
 
+  // Cash flow bar
+  const totalFlow = monthlyIncome + monthlyExpenses
+  const inPct = totalFlow > 0 ? Math.round((monthlyIncome / totalFlow) * 100) : 50
+  const outPct = 100 - inPct
+
+  // Type breakdown rows (exclude mortgage for visual clarity — it's negative)
+  const typeBreakdownHtml = Object.entries(byType)
+    .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+    .map(([type, bal]) => {
+      const color = TYPE_COLORS[type] ?? '#6b7280'
+      const label = TYPE_LABELS[type] ?? type
+      const barWidth = netWorth !== 0 ? Math.min(100, Math.round(Math.abs(bal / netWorth) * 100)) : 0
+      const isNeg = bal < 0
+      return `
+      <div style="margin-bottom: 8px;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+          <span style="font-size: 12px; color: #475569;">${label}</span>
+          <span style="font-size: 12px; font-weight: 600; color: ${isNeg ? '#dc2626' : '#0f172a'};">${fmtGBP(bal)}</span>
+        </div>
+        <div style="height: 4px; background: #e2e8f0; border-radius: 2px;">
+          <div style="height: 4px; width: ${barWidth}%; background: ${isNeg ? '#dc2626' : color}; border-radius: 2px;"></div>
+        </div>
+      </div>`
+    }).join('')
+
   const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
 
   await resend.emails.send({
@@ -261,18 +321,63 @@ Rules:
     subject: `Sundeas — Your daily investment digest (${today})`,
     html: `
       <div style="font-family: -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px; color: #0f172a;">
-        <div style="margin-bottom: 24px;">
+        <div style="margin-bottom: 20px;">
           <span style="font-size: 20px; font-weight: 700;">Sundeas</span>
         </div>
 
         <h1 style="font-size: 20px; font-weight: 600; margin: 0 0 4px;">Daily investment digest</h1>
         <p style="color: #94a3b8; font-size: 13px; margin: 0 0 20px;">${today}</p>
 
-        <div style="background: #f1f5f9; border-radius: 10px; padding: 16px 20px; margin-bottom: 24px;">
-          <p style="margin: 0 0 4px; font-size: 12px; font-weight: 500; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Net worth</p>
-          <p style="margin: 0; font-size: 24px; font-weight: 700;">£${netWorth.toLocaleString('en-GB', { minimumFractionDigits: 2 })}</p>
+        <!-- Net worth + Retire at row -->
+        <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+          <div style="flex: 1; background: #f1f5f9; border-radius: 10px; padding: 14px 18px;">
+            <p style="margin: 0 0 4px; font-size: 11px; font-weight: 500; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Net worth</p>
+            <p style="margin: 0; font-size: 22px; font-weight: 700;">${fmtGBP(netWorth)}</p>
+          </div>
+          ${retireAge ? `
+          <div style="flex: 1; background: #eef2ff; border-radius: 10px; padding: 14px 18px;">
+            <p style="margin: 0 0 4px; font-size: 11px; font-weight: 500; color: #6366f1; text-transform: uppercase; letter-spacing: 0.05em;">Retire at ${retireAge}</p>
+            ${targetLumpSum ? `
+            <p style="margin: 0; font-size: 22px; font-weight: 700; color: #4f46e5;">${progressPct}%</p>
+            <div style="height: 4px; background: #c7d2fe; border-radius: 2px; margin-top: 6px;">
+              <div style="height: 4px; width: ${progressPct}%; background: #4f46e5; border-radius: 2px;"></div>
+            </div>
+            <p style="margin: 4px 0 0; font-size: 11px; color: #6366f1;">of ${fmtGBP(targetLumpSum)} target</p>
+            ` : `<p style="margin: 0; font-size: 14px; color: #6366f1;">No target set</p>`}
+          </div>` : ''}
         </div>
 
+        <!-- Monthly Cash Flow -->
+        <div style="border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px 18px; margin-bottom: 16px;">
+          <p style="margin: 0 0 10px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Monthly cash flow</p>
+          <!-- IN/OUT bar -->
+          <div style="display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin-bottom: 10px;">
+            <div style="width: ${inPct}%; background: #16a34a;"></div>
+            <div style="width: ${outPct}%; background: #dc2626;"></div>
+          </div>
+          <div style="display: flex; justify-content: space-between;">
+            <div>
+              <p style="margin: 0; font-size: 11px; color: #16a34a; font-weight: 500; text-transform: uppercase;">IN</p>
+              <p style="margin: 2px 0 0; font-size: 16px; font-weight: 700; color: #16a34a;">${fmtGBP(monthlyIncome)}</p>
+            </div>
+            <div style="text-align: center;">
+              <p style="margin: 0; font-size: 11px; color: #64748b; font-weight: 500; text-transform: uppercase;">NET</p>
+              <p style="margin: 2px 0 0; font-size: 16px; font-weight: 700; color: ${monthlyNet >= 0 ? '#16a34a' : '#dc2626'};">${monthlyNet >= 0 ? '+' : ''}${fmtGBP(monthlyNet)}</p>
+            </div>
+            <div style="text-align: right;">
+              <p style="margin: 0; font-size: 11px; color: #dc2626; font-weight: 500; text-transform: uppercase;">OUT</p>
+              <p style="margin: 2px 0 0; font-size: 16px; font-weight: 700; color: #dc2626;">-${fmtGBP(monthlyExpenses)}</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Net worth breakdown by type -->
+        <div style="border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px 18px; margin-bottom: 24px;">
+          <p style="margin: 0 0 12px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Breakdown</p>
+          ${typeBreakdownHtml}
+        </div>
+
+        <!-- AI Summary -->
         <p style="color: #334155; font-size: 14px; line-height: 1.7; margin: 0 0 20px;">${summary}</p>
 
         <h2 style="font-size: 15px; font-weight: 600; margin: 0 0 12px;">Today's recommendations</h2>
@@ -285,7 +390,6 @@ Rules:
         <p style="color: #94a3b8; font-size: 11px; margin-top: 32px; border-top: 1px solid #e2e8f0; padding-top: 16px; line-height: 1.6;">
           This digest is generated by AI and is for educational and informational purposes only.
           It does not constitute regulated financial advice. Always do your own research before making investment decisions.
-          You're receiving this because you have a Sundeas account.
         </p>
       </div>
     `,
