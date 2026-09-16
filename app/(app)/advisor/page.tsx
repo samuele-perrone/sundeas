@@ -13,13 +13,6 @@ const STEPS = [
     cta: 'Go to Accounts',
   },
   {
-    key: 'income',
-    label: 'Add an income source',
-    description: 'Add your salary or other regular income in Budget.',
-    href: '/budget',
-    cta: 'Go to Budget',
-  },
-  {
     key: 'goal',
     label: 'Save your retirement goal',
     description: 'Set a target lump sum or monthly income in the Retirement plan.',
@@ -32,19 +25,17 @@ export default async function AdvisorPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  const [{ data: accounts }, { data: income }, { data: goals }] = await Promise.all([
+  const [{ data: accounts }, { data: goals }] = await Promise.all([
     supabase.from('accounts').select('id').eq('user_id', user!.id).limit(1),
-    supabase.from('recurring_payments').select('id').eq('user_id', user!.id).eq('type', 'income').limit(1),
     supabase.from('goals').select('id').eq('user_id', user!.id).limit(1),
   ])
 
   const done = {
     account: (accounts ?? []).length > 0,
-    income: (income ?? []).length > 0,
     goal: (goals ?? []).length > 0,
   }
 
-  const ready = done.account && done.income && done.goal
+  const ready = done.account && done.goal
 
   if (ready) return <ChatUI />
 
