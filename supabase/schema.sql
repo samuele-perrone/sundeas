@@ -86,7 +86,7 @@ create table if not exists public.transactions (
 create table if not exists public.recurring_payments (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  account_id uuid not null references public.accounts(id) on delete cascade,
+  account_id uuid not null references public.accounts(id) on delete restrict,
   name text not null,
   amount numeric(12,2) not null,
   frequency text not null,               -- 'weekly' | 'monthly' | 'annual'

@@ -310,7 +310,7 @@ export default function AccountRow({ acc }: { acc: Account }) {
             </AlertDialogDescription>
             {recurringCount !== null && recurringCount > 0 && (
               <p className="text-sm font-medium text-destructive">
-                ⚠️ This account has {recurringCount} recurring budget {recurringCount === 1 ? 'entry' : 'entries'} (income, expenses, or transfers) that will also be permanently deleted.
+                This account has {recurringCount} budget {recurringCount === 1 ? 'entry' : 'entries'} (income, expenses, or transfers) linked to it. Remove or reassign those in the Budget section before deleting this account.
               </p>
             )}
           </AlertDialogHeader>
@@ -318,8 +318,8 @@ export default function AccountRow({ acc }: { acc: Account }) {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
-              disabled={deleting}
-              className="bg-destructive text-white hover:bg-red-700"
+              disabled={deleting || (recurringCount !== null && recurringCount > 0)}
+              className="bg-destructive text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {deleting ? 'Deleting…' : 'Delete'}
             </AlertDialogAction>
