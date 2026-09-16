@@ -88,7 +88,7 @@ export async function sendDigestForUser(userId: string, email: string): Promise<
       .eq('user_id', userId)
       .single(),
     admin.from('profiles')
-      .select('date_of_birth, display_name')
+      .select('date_of_birth, display_name, target_retirement_age')
       .eq('id', userId)
       .single(),
     admin.from('balance_snapshots')
@@ -120,11 +120,17 @@ export async function sendDigestForUser(userId: string, email: string): Promise<
   for (const a of accounts) byType[a.type] = (byType[a.type] ?? 0) + (a.balance ?? 0)
 
   // ── Infer monthly savings from snapshots ───────────────────────────────────
-  // Group snapshots by date, sum balances across accounts
-  const snapByDate: Record<string, number> = {}
-  for (const snap of (snapshots ?? [])) {
+  // De-duplicate: per account per day take the latest reading, then sum across accounts.
+  // Without de-dup, multiple manual snapshots on the same day inflate the total.
+  const latestBalancePerAccountPerDay: Record<string, Record<string, number>> = {}
+  for (const snap of (snapshots ?? []).sort((a, b) => a.snapshotted_at.localeCompare(b.snapshotted_at))) {
     const day = snap.snapshotted_at.slice(0, 10)
-    snapByDate[day] = (snapByDate[day] ?? 0) + Number(snap.balance)
+    if (!latestBalancePerAccountPerDay[day]) latestBalancePerAccountPerDay[day] = {}
+    latestBalancePerAccountPerDay[day][snap.account_id] = Number(snap.balance)
+  }
+  const snapByDate: Record<string, number> = {}
+  for (const [day, accountBalances] of Object.entries(latestBalancePerAccountPerDay)) {
+    snapByDate[day] = Object.values(accountBalances).reduce((s, v) => s + v, 0)
   }
   const snapDates = Object.keys(snapByDate).sort()
 
@@ -140,20 +146,14 @@ export async function sendDigestForUser(userId: string, email: string): Promise<
     if (months > 0) {
       impliedMonthlySavings = (snapByDate[newest] - snapByDate[oldest]) / months
     }
-    // Month-over-month: find a snapshot ~30 days ago
-    const thirtyDaysAgo = new Date(now)
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-    const thirtyKey = thirtyDaysAgo.toISOString().slice(0, 10)
-    // Find closest snapshot at or before 30 days ago
-    const priorDates = snapDates.filter(d => d <= thirtyKey)
-    if (priorDates.length > 0) {
-      const priorDate = priorDates[priorDates.length - 1]
-      monthOverMonthChange = netWorth - snapByDate[priorDate]
-    }
+    // Month-over-month: compare the two most recent distinct snapshot dates
+    // (snapshot-to-snapshot is more reliable than comparing to current account balances)
+    const secondNewest = snapDates[snapDates.length - 2]
+    monthOverMonthChange = snapByDate[newest] - snapByDate[secondNewest]
   }
 
   // ── Retirement calculations ────────────────────────────────────────────────
-  const retireAge = goal?.target_retirement_age ?? null
+  const retireAge = goal?.target_retirement_age ?? profile?.target_retirement_age ?? null
   const targetLumpSum = goal?.target_lump_sum ?? null
   const targetMonthlyIncome = goal?.target_monthly_income ?? null
   const progressPct = targetLumpSum ? Math.min(100, Math.round((netWorth / targetLumpSum) * 100)) : null
