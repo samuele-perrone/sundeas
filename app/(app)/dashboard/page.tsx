@@ -88,7 +88,7 @@ export default async function DashboardPage() {
     byType[acc.type] = (byType[acc.type] ?? 0) + (acc.balance ?? 0)
   }
 
-  // Monthly net from recurring payments
+  // Monthly net from recurring payments (may be empty — inferred from snapshots below)
   const allRecurring = recurring ?? []
   const monthlyIncome = allRecurring.filter(r => r.type === 'income').reduce((s, r) => s + toMonthlyAmount(r.amount, r.frequency), 0)
   const monthlyExpenses = allRecurring.filter(r => r.type === 'expense').reduce((s, r) => s + toMonthlyAmount(r.amount, r.frequency), 0)
@@ -229,8 +229,28 @@ export default async function DashboardPage() {
     chartData.push(point)
   }
 
-  // Project if any account has a rate, or any recurring payments exist
-  const hasProjection = allRecurring.length > 0 || includedAccounts.some(a => a.interest_rate && a.interest_rate > 0)
+  // Infer monthly savings from snapshot history when no recurring payments are set.
+  // Uses the average net worth delta across the full snapshot window.
+  let impliedMonthlySavings: number | null = null
+  if (allRecurring.length === 0 && allSnapshotTs.length >= 2) {
+    const first = allSnapshotTs[0]
+    const last = allSnapshotTs[allSnapshotTs.length - 1]
+    const [fy, fm] = first.split('-').map(Number)
+    const [ly, lm] = last.split('-').map(Number)
+    const monthSpan = (ly - fy) * 12 + (lm - fm)
+    if (monthSpan > 0) {
+      impliedMonthlySavings = (byMonth[last] - byMonth[first]) / monthSpan
+      // Distribute implied savings proportionally across accounts for per-account projection
+      const totalBal = includedAccounts.reduce((s, a) => s + Math.max(0, a.balance ?? 0), 0)
+      for (const acc of includedAccounts) {
+        const share = totalBal > 0 ? Math.max(0, acc.balance ?? 0) / totalBal : 1 / includedAccounts.length
+        accountMonthlyNet[acc.id] = (accountMonthlyNet[acc.id] ?? 0) + impliedMonthlySavings * share
+      }
+    }
+  }
+
+  // Project if any account has a rate, recurring payments exist, or we inferred a savings rate
+  const hasProjection = impliedMonthlySavings !== null || allRecurring.length > 0 || includedAccounts.some(a => a.interest_rate && a.interest_rate > 0)
 
   // Per-account monthly rate (AER → monthly compound rate)
   const accountMonthlyRate: Record<string, number> = {}
@@ -420,11 +440,15 @@ export default async function DashboardPage() {
             >
               {formatGBP(netWorth)}
             </p>
-            {allRecurring.length > 0 && (
+            {allRecurring.length > 0 ? (
               <p className={`text-sm mt-1 ${monthlyNet >= 0 ? 'text-emerald-600' : 'text-destructive'}`}>
                 {monthlyNet >= 0 ? '+' : ''}{formatGBP(monthlyNet)}/month net from budget
               </p>
-            )}
+            ) : impliedMonthlySavings !== null ? (
+              <p className={`text-sm mt-1 ${impliedMonthlySavings >= 0 ? 'text-emerald-600' : 'text-destructive'}`}>
+                {impliedMonthlySavings >= 0 ? '+' : ''}{formatGBP(impliedMonthlySavings)}/month avg savings (from snapshot trend)
+              </p>
+            ) : null}
           </div>
           {(accounts ?? []).length === 0 && (
             <p className="text-sm text-muted-foreground">
@@ -437,10 +461,11 @@ export default async function DashboardPage() {
           <NetWorthChart data={chartData} accountSeries={categorySeries} />
           <div className="border-t border-border pt-3 space-y-1">
             <p className="text-xs text-muted-foreground">
-              <span className="font-medium text-foreground">Solid lines</span> — real data from your snapshots, extended to today using your rates and recurring payments.
+              <span className="font-medium text-foreground">Solid lines</span> — real data from your snapshots, extended to today.
             </p>
             <p className="text-xs text-muted-foreground">
-              <span className="font-medium text-foreground">Dashed lines</span> — projection from today using each account&apos;s interest rate (compounded monthly) and your recurring payments.
+              <span className="font-medium text-foreground">Dashed lines</span> — projection from today using{' '}
+              {allRecurring.length > 0 ? 'your recurring payments and interest rates' : impliedMonthlySavings !== null ? 'your average savings trend from snapshot history' : 'interest rates'}.
             </p>
             <p className="text-xs text-muted-foreground">
               The <span className="font-medium text-foreground">time filter</span> (1M / 3M / 6M / 1Y / Retirement) controls how far ahead the projection is shown — history always displays in full.
