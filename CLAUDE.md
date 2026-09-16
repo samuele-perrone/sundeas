@@ -95,6 +95,8 @@ Grouping key: `snap.snapshotted_at.slice(0, 10)` (not `.slice(0, 7)` — per-day
 
 `monthsBehind` = months between last snapshot and today. When > 0, the projection loop draws a solid extension up to today before switching to dotted future lines.
 
+**Snapshot-based projection**: when no recurring payments exist but ≥2 snapshots are available, the dashboard computes `impliedMonthlySavings = (latestNetWorth - earliestNetWorth) / monthSpan` and distributes it proportionally across accounts (by balance weight) into `accountMonthlyNet`. This lets the projection run even without any budget data. `hasProjection` is true when `impliedMonthlySavings !== null`.
+
 ### Snapshot system
 
 Two separate snapshot mechanisms with intentionally different behaviour:
@@ -109,6 +111,8 @@ Two separate snapshot mechanisms with intentionally different behaviour:
 
 ### Budget / recurring payments (`recurring_payments` table)
 
+The budget page (`/budget`) is intentionally **not surfaced in the nav**. The app is snapshot-driven — projections and the monthly digest work from actual balance history, not manually entered budget lines. The `/budget` route and table still exist for users who want to enter detailed income/expense data.
+
 `type`: `'income'` | `'expense'` | `'transfer'`
 `frequency`: `'weekly'` | `'monthly'` | `'annual'`
 `payment_month` (1–12): for annual payments, the calendar month they land. Used in projection to apply as a lump sum in the correct month rather than smoothed monthly.
@@ -116,6 +120,8 @@ Two separate snapshot mechanisms with intentionally different behaviour:
 `toMonthlyAmount(amount, frequency)` in `lib/finance.ts` normalises to monthly. Annual payments with `payment_month` set are excluded from monthly smoothing and applied as lump sums in the projection loop.
 
 Transfers have `to_account_id`; they reduce the source account and increase the destination in projections.
+
+**Schema safety**: `recurring_payments.account_id` uses `ON DELETE RESTRICT` — deleting an account with linked budget entries is blocked at the DB level. Remove the entries first.
 
 ### Trading 212 integration (`lib/trading212.ts`)
 
@@ -149,11 +155,15 @@ Triggered by `GET /api/cron/investment-digest?userId=<id>` (Bearer `CRON_SECRET`
 
 **Important cron route bug fix**: The Supabase query builder returns a new object from `.eq()`; the original query is not mutated. Use `let query = ...; if (targetUserId) query = query.eq(...)` not `if (targetUserId) query.eq(...)`.
 
+**Schedule**: monthly on the 25th at 9am (`0 9 25 * *` in `vercel.json`). Was daily — changed because a monthly overview is more actionable for retirement planning.
+
 Email structure (all `<table>`-based — flexbox not supported in Gmail/Apple Mail):
-1. Net worth + Retire-at progress side-by-side
-2. Monthly cash flow bar (IN/NET/OUT)
+1. Net worth + Retire-at progress side-by-side (with month-over-month change from snapshots)
+2. Monthly savings check: actual inferred rate vs required rate, gap/surplus
 3. Net worth breakdown by account type
-4. AI summary + 4 recommendations
+4. AI summary + 4 retirement-focused recommendations
+
+**Snapshot-based savings rate**: the digest fetches last 6 months of snapshots, computes month-over-month net worth change and average implied savings rate. No recurring payments needed. The "required monthly saving" comes from `(targetLumpSum - netWorth) / monthsLeft`.
 
 AI prompt strategy: recent advisor chat messages (last 7 days, up to 50) go at the **top** of the prompt with a `CRITICAL INSTRUCTION` requiring the first 1–2 recommendations to address topics discussed. This ensures digest recommendations update when the advisor is used. Uses `claude-sonnet-4-6` (not Haiku) for better instruction-following.
 
