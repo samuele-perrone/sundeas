@@ -86,6 +86,8 @@ export async function sendDigestForUser(userId: string, email: string): Promise<
     admin.from('goals')
       .select('target_retirement_age, target_monthly_income, target_lump_sum')
       .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(1)
       .single(),
     admin.from('profiles')
       .select('date_of_birth, display_name, target_retirement_age')
