@@ -164,25 +164,30 @@ export default async function RetirementWidget() {
         )}
 
         {/* Monthly saving target — always visible */}
-        <div className={`rounded-lg px-2 py-2 space-y-1 mt-1 ${onTrack ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-amber-500/10 border border-amber-500/20'}`}>
-          <p className={`text-[10px] font-medium ${onTrack ? 'text-emerald-300' : 'text-amber-300'}`}>
-            Monthly saving needed
+        <div className={`rounded-lg px-2 py-2 space-y-1 mt-1 ${onTrack ? 'bg-white/5 border border-white/10' : 'bg-amber-500/10 border border-amber-500/20'}`}>
+          <p className={`text-[10px] font-medium ${onTrack ? 'text-slate-400' : 'text-amber-300'}`}>
+            To reach goal without growth
           </p>
           <div className="flex items-baseline justify-between">
-            <span className={`text-base font-bold tabular-nums ${onTrack ? 'text-emerald-400' : 'text-amber-400'}`}>
-              {onTrack ? `£0/mo` : `${formatGBP(extraMonthly)}/mo`}
+            <span className={`text-base font-bold tabular-nums ${onTrack ? 'text-white' : 'text-amber-400'}`}>
+              {formatGBP(naiveMonthlyNeeded)}/mo
             </span>
-            {onTrack && (
-              <span className="text-[10px] text-emerald-500">interest covers goal ✓</span>
-            )}
           </div>
-          <p className={`text-[10px] ${onTrack ? 'text-emerald-500' : 'text-amber-500'}`}>
-            Without growth: {formatGBP(naiveMonthlyNeeded)}/mo
-          </p>
-          {!onTrack && lumpEquivalent !== null && (
-            <p className="text-[10px] text-amber-400">
-              Or invest {formatGBP(lumpEquivalent)} now at 5% AER
+          {onTrack ? (
+            <p className="text-[10px] text-emerald-400">
+              Your interest rates cover this — no extra saving needed at current rates
             </p>
+          ) : (
+            <>
+              <p className="text-[10px] text-amber-500">
+                Extra needed (with growth): {formatGBP(extraMonthly)}/mo
+              </p>
+              {lumpEquivalent !== null && (
+                <p className="text-[10px] text-amber-400">
+                  Or invest {formatGBP(lumpEquivalent)} now at 5% AER
+                </p>
+              )}
+            </>
           )}
         </div>
       </div>

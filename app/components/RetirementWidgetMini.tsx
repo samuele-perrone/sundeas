@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { calcNetWorth, calcYearsToRetirement, formatGBP } from '@/lib/finance'
+import { calcNetWorth, calcYearsToRetirement, calcRequiredMonthlySaving, formatGBP } from '@/lib/finance'
 import Link from 'next/link'
 
 export default async function RetirementWidgetMini() {
@@ -37,7 +37,7 @@ export default async function RetirementWidgetMini() {
   }
 
   const progress = Math.max(0, Math.min(100, (netWorth / targetLumpSum) * 100))
-  const onTrack = netWorth >= targetLumpSum
+  const monthlyNeeded = calcRequiredMonthlySaving(netWorth, targetLumpSum, yearsLeft)
 
   return (
     <Link
@@ -52,16 +52,17 @@ export default async function RetirementWidgetMini() {
           <span className="font-bold text-foreground">{Math.round(progress)}%</span>
           <span className="text-muted-foreground">·</span>
           <span className="text-muted-foreground">{yearsLeft} yrs left</span>
-          <span className="text-muted-foreground">·</span>
-          <span className="text-muted-foreground">Goal {formatGBP(targetLumpSum)}</span>
         </div>
       </div>
-      <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+      <div className="h-1.5 bg-muted rounded-full overflow-hidden mb-2">
         <div
-          className={`h-full rounded-full transition-all ${onTrack ? 'bg-emerald-500' : 'bg-indigo-500'}`}
+          className="h-full rounded-full transition-all bg-indigo-500"
           style={{ width: `${progress}%` }}
         />
       </div>
+      <p className="text-xs text-muted-foreground">
+        Save <span className="font-semibold text-foreground">{formatGBP(monthlyNeeded)}/mo</span> to reach {formatGBP(targetLumpSum)} goal
+      </p>
     </Link>
   )
 }
