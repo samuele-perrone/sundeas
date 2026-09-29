@@ -116,8 +116,9 @@ export default async function RetirementWidget() {
     ? Math.round((projectedAtRetirement * 0.04) / 12)
     : null
 
-  const barWidth = Math.max(0, Math.min(100, progress))
   const onTrack = gap <= 0
+  // Progress bar reflects projected achievement, not just today's savings
+  const projectedProgress = Math.min(100, (projectedAtRetirement / targetLumpSum) * 100)
 
   return (
     <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-3 space-y-2.5">
@@ -127,16 +128,27 @@ export default async function RetirementWidget() {
           Retirement at {targetAge}
         </p>
         <div className="flex items-baseline justify-between mb-1">
-          <span className="text-lg font-bold text-white">{Math.round(progress)}%</span>
-          <span className="text-[10px] text-slate-400">{formatGBP(targetLumpSum)} goal</span>
+          <div>
+            <span className="text-lg font-bold text-white">{Math.round(progress)}%</span>
+            <span className="text-[10px] text-slate-500 ml-1">today</span>
+          </div>
+          <span className="text-[10px] text-slate-400">{formatGBP(targetLumpSum)} target</span>
         </div>
+        {/* Bar shows projected progress — full green when on track */}
         <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
           <div
             className={`h-full rounded-full transition-all ${onTrack ? 'bg-emerald-400' : 'bg-indigo-400'}`}
-            style={{ width: `${barWidth}%` }}
+            style={{ width: `${projectedProgress}%` }}
           />
         </div>
-        <p className="text-[10px] text-slate-400 mt-1">{yearsLeft} years remaining</p>
+        <div className="flex items-center justify-between mt-1">
+          <p className="text-[10px] text-slate-400">{yearsLeft} years remaining</p>
+          <p className={`text-[10px] font-medium ${onTrack ? 'text-emerald-400' : 'text-slate-400'}`}>
+            {onTrack
+              ? `${Math.round(projectedAtRetirement / targetLumpSum * 100)}% projected ✓`
+              : `${Math.round(projectedProgress)}% projected`}
+          </p>
+        </div>
       </div>
 
       {/* Gap analysis */}

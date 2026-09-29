@@ -47,9 +47,12 @@ export default async function PlanPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-end justify-between">
-              <p className="text-4xl font-bold tracking-tight">{Math.round(progress)}%</p>
+              <div>
+                <p className="text-4xl font-bold tracking-tight">{Math.round(progress)}%</p>
+                <p className="text-xs text-muted-foreground mt-0.5">of target saved today</p>
+              </div>
               <div className="text-right">
-                <p className="text-xs text-muted-foreground">Current</p>
+                <p className="text-xs text-muted-foreground">Net worth</p>
                 <p className="text-lg font-semibold tabular-nums">{formatGBP(netWorth)}</p>
               </div>
             </div>
@@ -57,8 +60,11 @@ export default async function PlanPage() {
             <Progress
               value={Math.min(100, progress)}
               className="h-3"
-              aria-label={`${Math.round(progress)}% of retirement target reached`}
+              aria-label={`${Math.round(progress)}% of retirement target saved today`}
             />
+            <p className="text-xs text-muted-foreground -mt-1">
+              This shows your current savings vs the target. The projection below accounts for growth over {yearsLeft} years.
+            </p>
 
             <dl className="grid grid-cols-3 gap-4 pt-1">
               <div className="text-center">
