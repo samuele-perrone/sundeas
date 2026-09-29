@@ -45,11 +45,21 @@ export default function GoalForm({
     dob: profile?.date_of_birth ?? '',
   })
 
-  const monthlyIncome = parseFloat(form.target_monthly_income) || 0
   const lumpSumValue = parseFloat(form.target_lump_sum) || 0
-  // What the 4% rule would suggest for the entered income
-  const suggestedLumpSum = monthlyIncome > 0 ? Math.round((monthlyIncome * 12) / 0.04) : null
-  const showSyncHint = suggestedLumpSum !== null && suggestedLumpSum !== lumpSumValue
+
+  const setIncome = (value: string) => {
+    setSaved(false)
+    const income = parseFloat(value) || 0
+    const derived = income > 0 ? String(Math.round((income * 12) / 0.04)) : ''
+    setForm(f => ({ ...f, target_monthly_income: value, target_lump_sum: derived }))
+  }
+
+  const setLumpSum = (value: string) => {
+    setSaved(false)
+    const lump = parseFloat(value) || 0
+    const derived = lump > 0 ? String(Math.round((lump * 0.04) / 12)) : ''
+    setForm(f => ({ ...f, target_lump_sum: value, target_monthly_income: derived }))
+  }
 
   const set = (field: string, value: string) => {
     setSaved(false)
@@ -64,9 +74,12 @@ export default function GoalForm({
       const res = await fetch('/api/goals/suggest', { method: 'POST' })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to get suggestion')
+      const income = data.target_monthly_income ?? 0
+      const lump = income > 0 ? Math.round((income * 12) / 0.04) : 0
       setForm(f => ({
         ...f,
-        target_monthly_income: String(data.target_monthly_income ?? ''),
+        target_monthly_income: String(income || ''),
+        target_lump_sum: String(lump || ''),
       }))
       if (data.reasoning) setReasoning(data.reasoning)
     } catch (e: unknown) {
@@ -90,8 +103,8 @@ export default function GoalForm({
     const payload = {
       user_id: userId,
       target_retirement_age: parseInt(form.target_retirement_age, 10),
-      target_monthly_income: monthlyIncome || null,
-      target_lump_sum: lumpSumValue || suggestedLumpSum || null,
+      target_monthly_income: parseFloat(form.target_monthly_income) || null,
+      target_lump_sum: lumpSumValue || null,
       notes: form.notes || null,
       updated_at: new Date().toISOString(),
     }
@@ -178,7 +191,7 @@ export default function GoalForm({
               step="100"
               placeholder="e.g. 3000"
               value={form.target_monthly_income}
-              onChange={e => set('target_monthly_income', e.target.value)}
+              onChange={e => setIncome(e.target.value)}
             />
           </div>
           <div className="space-y-2">
@@ -189,20 +202,9 @@ export default function GoalForm({
               step="1000"
               placeholder="e.g. 750000"
               value={form.target_lump_sum}
-              onChange={e => set('target_lump_sum', e.target.value)}
+              onChange={e => setLumpSum(e.target.value)}
             />
-            {showSyncHint && (
-              <p className="text-xs text-muted-foreground">
-                4% rule suggests{' '}
-                <button
-                  type="button"
-                  className="text-primary underline-offset-4 hover:underline font-medium"
-                  onClick={() => set('target_lump_sum', String(suggestedLumpSum))}
-                >
-                  £{suggestedLumpSum!.toLocaleString('en-GB')}
-                </button>
-              </p>
-            )}
+            <p className="text-xs text-muted-foreground">Linked via 4% rule</p>
           </div>
         </div>
       </div>
