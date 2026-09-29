@@ -127,27 +127,33 @@ export default async function RetirementWidget() {
         <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
           Retirement at {targetAge}
         </p>
-        <div className="flex items-baseline justify-between mb-1">
-          <div>
-            <span className="text-lg font-bold text-white">{Math.round(progress)}%</span>
-            <span className="text-[10px] text-slate-500 ml-1">today</span>
-          </div>
+        <div className="flex items-baseline justify-between mb-2">
           <span className="text-[10px] text-slate-400">{formatGBP(targetLumpSum)} target</span>
+          <span className="text-[10px] text-slate-500">{yearsLeft} yrs remaining</span>
         </div>
-        {/* Bar shows projected progress — full green when on track */}
-        <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+
+        {/* Single bar: emerald = projected growth, indigo = saved today */}
+        <div className="h-2 bg-white/10 rounded-full overflow-hidden relative">
           <div
-            className={`h-full rounded-full transition-all ${onTrack ? 'bg-emerald-400' : 'bg-indigo-400'}`}
+            className="absolute inset-y-0 left-0 bg-emerald-400/50 rounded-full transition-all"
             style={{ width: `${projectedProgress}%` }}
           />
+          <div
+            className="absolute inset-y-0 left-0 bg-indigo-400 rounded-full transition-all"
+            style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
+          />
         </div>
-        <div className="flex items-center justify-between mt-1">
-          <p className="text-[10px] text-slate-400">{yearsLeft} years remaining</p>
-          <p className={`text-[10px] font-medium ${onTrack ? 'text-emerald-400' : 'text-slate-400'}`}>
-            {onTrack
-              ? `${Math.round(projectedAtRetirement / targetLumpSum * 100)}% projected ✓`
-              : `${Math.round(projectedProgress)}% projected`}
-          </p>
+
+        {/* Legend */}
+        <div className="flex items-center gap-3 mt-1.5">
+          <span className="flex items-center gap-1 text-[10px] text-slate-400">
+            <span className="w-2 h-2 rounded-full bg-indigo-400 inline-block shrink-0" />
+            {Math.round(progress)}% today
+          </span>
+          <span className={`flex items-center gap-1 text-[10px] ${onTrack ? 'text-emerald-400' : 'text-slate-400'}`}>
+            <span className={`w-2 h-2 rounded-full inline-block shrink-0 ${onTrack ? 'bg-emerald-400' : 'bg-emerald-400/50'}`} />
+            {Math.round(Math.min(projectedAtRetirement / targetLumpSum * 100, 999))}% at {targetAge}{onTrack ? ' ✓' : ''}
+          </span>
         </div>
       </div>
 

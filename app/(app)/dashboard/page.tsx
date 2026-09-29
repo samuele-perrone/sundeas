@@ -639,15 +639,42 @@ export default async function DashboardPage() {
             {progress !== null ? (
               <>
                 <div className="flex items-end justify-between">
-                  <p className="text-3xl font-bold tracking-tight">{Math.round(progress)}%</p>
+                  <div>
+                    <p className="text-3xl font-bold tracking-tight">{Math.round(progress)}%</p>
+                    <p className="text-xs text-muted-foreground">saved today</p>
+                  </div>
                   <p className="text-sm text-muted-foreground pb-1">{formatGBP(targetLumpSum!)} target</p>
                 </div>
-                <Progress
-                  value={Math.min(progress, 100)}
-                  aria-label={`${Math.round(progress)}% of retirement target reached`}
-                  className="h-2"
-                />
-                <div className="flex flex-col gap-1 pt-1">
+
+                {/* Single bar: emerald = projected growth, indigo = saved today */}
+                <div className="h-2.5 bg-muted rounded-full overflow-hidden relative">
+                  {projectedAtRetirement !== null && (
+                    <div
+                      className={`absolute inset-y-0 left-0 rounded-full transition-all ${projectedAtRetirement >= targetLumpSum! ? 'bg-emerald-400/40' : 'bg-indigo-300/40'}`}
+                      style={{ width: `${Math.min(projectedAtRetirement / targetLumpSum! * 100, 100)}%` }}
+                    />
+                  )}
+                  <div
+                    className="absolute inset-y-0 left-0 bg-indigo-500 rounded-full transition-all"
+                    style={{ width: `${Math.min(progress, 100)}%` }}
+                  />
+                </div>
+
+                {/* Legend */}
+                <div className="flex items-center gap-4">
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 inline-block shrink-0" />
+                    {Math.round(progress)}% saved today
+                  </span>
+                  {projectedAtRetirement !== null && (
+                    <span className={`flex items-center gap-1.5 text-xs ${projectedAtRetirement >= targetLumpSum! ? 'text-emerald-600' : 'text-muted-foreground'}`}>
+                      <span className={`w-2.5 h-2.5 rounded-full inline-block shrink-0 ${projectedAtRetirement >= targetLumpSum! ? 'bg-emerald-400/40 border border-emerald-500' : 'bg-indigo-300/40 border border-indigo-400'}`} />
+                      {Math.round(Math.min(projectedAtRetirement / targetLumpSum! * 100, 999))}% at {targetAge}{projectedAtRetirement >= targetLumpSum! ? ' ✓' : ''}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex flex-col gap-1">
                   {yearsLeft !== null && (
                     <p className="text-xs text-muted-foreground">{yearsLeft} years remaining</p>
                   )}
