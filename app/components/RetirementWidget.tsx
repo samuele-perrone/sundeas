@@ -165,22 +165,25 @@ export default async function RetirementWidget() {
 
         {/* Monthly saving target — always visible */}
         <div className={`rounded-lg px-2 py-2 space-y-1 mt-1 ${onTrack ? 'bg-white/5 border border-white/10' : 'bg-amber-500/10 border border-amber-500/20'}`}>
-          <p className={`text-[10px] font-medium ${onTrack ? 'text-slate-400' : 'text-amber-300'}`}>
-            To reach goal without growth
+          <p className={`text-[10px] font-medium ${onTrack ? 'text-slate-400' : 'text-amber-300'} uppercase tracking-wider`}>
+            Monthly saving needed
           </p>
-          <div className="flex items-baseline justify-between">
-            <span className={`text-base font-bold tabular-nums ${onTrack ? 'text-white' : 'text-amber-400'}`}>
+          <div className="flex items-baseline gap-2">
+            <span className={`text-lg font-bold tabular-nums ${onTrack ? 'text-white' : 'text-amber-400'}`}>
               {formatGBP(naiveMonthlyNeeded)}/mo
             </span>
+            {onTrack && (
+              <span className="text-[10px] text-emerald-400">covered by growth ✓</span>
+            )}
           </div>
           {onTrack ? (
-            <p className="text-[10px] text-emerald-400">
-              Your interest rates cover this — no extra saving needed at current rates
+            <p className="text-[10px] text-slate-500">
+              Your projected returns cover this — add to your budget to be safe
             </p>
           ) : (
             <>
               <p className="text-[10px] text-amber-500">
-                Extra needed (with growth): {formatGBP(extraMonthly)}/mo
+                With projected growth: {formatGBP(extraMonthly)}/mo extra needed
               </p>
               {lumpEquivalent !== null && (
                 <p className="text-[10px] text-amber-400">
