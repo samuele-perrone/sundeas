@@ -105,8 +105,10 @@ export default async function RetirementWidget() {
     .sort((a, b) => b[1] - a[1])
 
   const gap = targetLumpSum - projectedAtRetirement
-  const extraMonthly = gap > 0 ? gap / (yearsLeft * 12) : null
-  const lumpEquivalent = extraMonthly !== null ? Math.round((extraMonthly * 12) / 0.05) : null
+  const extraMonthly = gap > 0 ? Math.round(gap / (yearsLeft * 12)) : 0
+  const lumpEquivalent = extraMonthly > 0 ? Math.round((extraMonthly * 12) / 0.05) : null
+  // Naive monthly saving needed ignoring interest/growth (useful reference even when on track)
+  const naiveMonthlyNeeded = Math.max(0, Math.round((targetLumpSum - netWorth) / (yearsLeft * 12)))
 
   // Monthly income at retirement: use goal target if set, otherwise 4% SWR on projected pot
   const targetMonthlyIncome: number | null = goal?.target_monthly_income ?? null
@@ -146,30 +148,43 @@ export default async function RetirementWidget() {
           </span>
         </div>
         {onTrack ? (
-          <p className="text-[10px] text-emerald-400">On track — surplus of {formatGBP(Math.round(-gap))}</p>
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] text-slate-400">Surplus</span>
+            <span className="text-[11px] font-semibold tabular-nums text-emerald-400">
+              +{formatGBP(Math.round(-gap))}
+            </span>
+          </div>
         ) : (
-          <>
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] text-slate-400">Still needed</span>
-              <span className="text-[11px] font-semibold tabular-nums text-amber-400">
-                {formatGBP(Math.round(gap))}
-              </span>
-            </div>
-            {extraMonthly !== null && (
-              <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-2 py-2 space-y-1">
-                <p className="text-[10px] font-medium text-amber-300">To close the gap:</p>
-                <p className="text-[10px] text-amber-400">
-                  · Save <span className="font-semibold">{formatGBP(Math.round(extraMonthly))}/mo</span> extra
-                </p>
-                {lumpEquivalent !== null && (
-                  <p className="text-[10px] text-amber-400">
-                    · Or invest <span className="font-semibold">{formatGBP(lumpEquivalent)}</span> at 5% AER
-                  </p>
-                )}
-              </div>
-            )}
-          </>
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] text-slate-400">Still needed</span>
+            <span className="text-[11px] font-semibold tabular-nums text-amber-400">
+              {formatGBP(Math.round(gap))}
+            </span>
+          </div>
         )}
+
+        {/* Monthly saving target — always visible */}
+        <div className={`rounded-lg px-2 py-2 space-y-1 mt-1 ${onTrack ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-amber-500/10 border border-amber-500/20'}`}>
+          <p className={`text-[10px] font-medium ${onTrack ? 'text-emerald-300' : 'text-amber-300'}`}>
+            Monthly saving needed
+          </p>
+          <div className="flex items-baseline justify-between">
+            <span className={`text-base font-bold tabular-nums ${onTrack ? 'text-emerald-400' : 'text-amber-400'}`}>
+              {onTrack ? `£0/mo` : `${formatGBP(extraMonthly)}/mo`}
+            </span>
+            {onTrack && (
+              <span className="text-[10px] text-emerald-500">interest covers goal ✓</span>
+            )}
+          </div>
+          <p className={`text-[10px] ${onTrack ? 'text-emerald-500' : 'text-amber-500'}`}>
+            Without growth: {formatGBP(naiveMonthlyNeeded)}/mo
+          </p>
+          {!onTrack && lumpEquivalent !== null && (
+            <p className="text-[10px] text-amber-400">
+              Or invest {formatGBP(lumpEquivalent)} now at 5% AER
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Expected monthly income */}
