@@ -5,6 +5,7 @@ import SignOutButton from '@/app/components/SignOutButton'
 import AppNav from '@/app/components/AppNav'
 import MobileNav from '@/app/components/MobileNav'
 import RetirementWidget from '@/app/components/RetirementWidget'
+import RetirementWidgetMini from '@/app/components/RetirementWidgetMini'
 import { Providers } from '@/app/components/Providers'
 import type { Metadata } from 'next'
 
@@ -86,11 +87,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <AppNav role={profile.role} />
         </div>
 
-        {/* Widget + footer always visible at bottom */}
+        {/* Footer always visible at bottom */}
         <div className="shrink-0">
-          <div className="px-3 pb-3">
-            <RetirementWidget />
-          </div>
           <div className="px-3 py-4 border-t border-white/10">
             <p className="text-xs text-slate-400 px-3 py-1 truncate" title={user.email ?? ''}>
               {user.email}
@@ -105,8 +103,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </aside>
 
       <main className="flex-1 min-h-screen overflow-y-auto pt-14 md:pt-0 pb-20 md:pb-0">
+        {/* Compact retirement status — mobile only */}
+        <div className="md:hidden px-4 pt-4 pb-0">
+          <RetirementWidgetMini />
+        </div>
         <Providers>{children}</Providers>
       </main>
+
+      {/* Right panel — desktop xl+ only */}
+      <aside
+        className="hidden xl:flex flex-col w-64 shrink-0 bg-sidebar h-screen sticky top-0 overflow-y-auto border-l border-white/10 px-3 py-6"
+        aria-label="Retirement overview"
+      >
+        <RetirementWidget />
+      </aside>
 
       <MobileNav role={profile.role} />
     </div>
