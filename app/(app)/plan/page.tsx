@@ -6,6 +6,8 @@ import { Separator } from '@/components/ui/separator'
 import GoalForm from './GoalForm'
 import TodoList from './TodoList'
 
+export const dynamic = 'force-dynamic'
+
 export default async function PlanPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()

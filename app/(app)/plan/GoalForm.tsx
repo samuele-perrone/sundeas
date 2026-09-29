@@ -40,12 +40,16 @@ export default function GoalForm({
   const [form, setForm] = useState({
     target_retirement_age: String(existingGoal?.target_retirement_age ?? profile?.target_retirement_age ?? 57),
     target_monthly_income: String(existingGoal?.target_monthly_income ?? ''),
+    target_lump_sum: String(existingGoal?.target_lump_sum ?? ''),
     notes: existingGoal?.notes ?? '',
     dob: profile?.date_of_birth ?? '',
   })
 
   const monthlyIncome = parseFloat(form.target_monthly_income) || 0
-  const derivedLumpSum = monthlyIncome > 0 ? Math.round((monthlyIncome * 12) / 0.04) : null
+  const lumpSumValue = parseFloat(form.target_lump_sum) || 0
+  // What the 4% rule would suggest for the entered income
+  const suggestedLumpSum = monthlyIncome > 0 ? Math.round((monthlyIncome * 12) / 0.04) : null
+  const showSyncHint = suggestedLumpSum !== null && suggestedLumpSum !== lumpSumValue
 
   const set = (field: string, value: string) => {
     setSaved(false)
@@ -87,7 +91,7 @@ export default function GoalForm({
       user_id: userId,
       target_retirement_age: parseInt(form.target_retirement_age, 10),
       target_monthly_income: monthlyIncome || null,
-      target_lump_sum: derivedLumpSum,
+      target_lump_sum: lumpSumValue || suggestedLumpSum || null,
       notes: form.notes || null,
       updated_at: new Date().toISOString(),
     }
@@ -165,9 +169,9 @@ export default function GoalForm({
           </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="goal-monthly">Monthly income target (£)</Label>
+            <Label htmlFor="goal-monthly">Monthly income in retirement (£)</Label>
             <Input
               id="goal-monthly"
               type="number"
@@ -178,10 +182,27 @@ export default function GoalForm({
             />
           </div>
           <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">Required pot (4% rule)</p>
-            <p className="h-10 flex items-center px-3 rounded-lg border border-input bg-secondary/40 text-sm font-semibold tabular-nums">
-              {derivedLumpSum ? `£${derivedLumpSum.toLocaleString('en-GB')}` : '—'}
-            </p>
+            <Label htmlFor="goal-lump">Target lump sum (£)</Label>
+            <Input
+              id="goal-lump"
+              type="number"
+              step="1000"
+              placeholder="e.g. 750000"
+              value={form.target_lump_sum}
+              onChange={e => set('target_lump_sum', e.target.value)}
+            />
+            {showSyncHint && (
+              <p className="text-xs text-muted-foreground">
+                4% rule suggests{' '}
+                <button
+                  type="button"
+                  className="text-primary underline-offset-4 hover:underline font-medium"
+                  onClick={() => set('target_lump_sum', String(suggestedLumpSum))}
+                >
+                  £{suggestedLumpSum!.toLocaleString('en-GB')}
+                </button>
+              </p>
+            )}
           </div>
         </div>
       </div>
